@@ -28,7 +28,10 @@ from .config import (
 )
 from .db.database import Base
 from .db.database import async_engine as engine
+from .db.database import local_session
 from .utils import cache, queue
+
+from ..core.permissions import permission_root, flatten_permissions, PermissionNames
 
 
 # -------------- database --------------
@@ -128,6 +131,83 @@ def lifespan_factory(
 
 
 # -------------- application --------------
+async def seed_initial_rbac() -> None:
+    async with local_session() as db:
+        # Create default roles if not exist
+        from ..models.role import Role
+        from ..models.permission import Permission
+        from ..models.user import User
+        from ..models.user_role import UserRole
+        from ..core.permissions import PermissionNames
+        
+        # Ensure an admin role exists
+        admin_role = await db.execute(
+            """SELECT * FROM role WHERE name = 'admin' AND is_active = true LIMIT 1"""
+        )
+        admin = admin_role.scalar_one_or_none()
+        
+        if admin is None:
+            # Insert admin role
+            await db.execute(
+                """
+                INSERT INTO role (name, description, is_active, created_at, updated_at)
+                VALUES ('admin', 'System Administrator', true, now(), now())
+                """
+            )
+            await db.commit()
+            admin_role = await db.execute(
+                """SELECT * FROM role WHERE name = 'admin' LIMIT 1"""
+            )
+            admin = admin_role.scalar_one()
+        
+        # Grant permissions to admin role (id fetched from row)
+        # Using ORM bulk operations for clarity
+        admin_id = admin.id if hasattr(admin, 'id') else admin[0]
+        existing_perms = await db.execute(
+            """SELECT permission_name FROM permission WHERE role_id = :role_id""",
+            {"role_id": admin_id},
+        )
+        existing = {row[0] for row in existing_perms.all()}
+        needed = [
+            PermissionNames.USER_MANAGE,
+            PermissionNames.USER_READ,
+            PermissionNames.USER_CREATE,
+            PermissionNames.USER_UPDATE,
+            PermissionNames.USER_DELETE,
+            PermissionNames.ROLE_MANAGE,
+            PermissionNames.ROLE_READ,
+            PermissionNames.ROLE_CREATE,
+            PermissionNames.ROLE_UPDATE,
+            PermissionNames.ROLE_ASSIGN,
+            PermissionNames.ROLE_REVOKE,
+            PermissionNames.ROOT,
+            # ensure delete role permission seeded
+            getattr(PermissionNames, 'ROLE_DELETE', PermissionNames.ROLE_UPDATE),
+        ]
+        to_create = [
+            Permission(permission_name=perm, role_id=admin_id) for perm in needed if perm not in existing
+        ]
+        if to_create:
+            db.add_all(to_create)
+            await db.commit()
+        
+        # Optionally assign admin role to superusers
+        superusers = await db.execute(
+            """SELECT id FROM "user" WHERE is_superuser = true"""
+        )
+        su_ids = [row[0] for row in superusers.all()]
+        if su_ids:
+            # Fetch existing links to avoid duplicates
+            existing_links = await db.execute(
+                """SELECT user_id FROM user_role WHERE role_id = :role_id AND user_id = ANY(:uids)""",
+                {"role_id": admin_id, "uids": su_ids},
+            )
+            existing_user_ids = {row[0] for row in existing_links.all()}
+            new_links = [UserRole(user_id=uid, role_id=admin_id) for uid in su_ids if uid not in existing_user_ids]
+            if new_links:
+                db.add_all(new_links)
+                await db.commit()
+
 def create_application(
     router: APIRouter,
     settings: (
@@ -202,6 +282,17 @@ def create_application(
 
     application = FastAPI(lifespan=lifespan, **kwargs)
     application.include_router(router)
+
+    # Seed initial RBAC after tables creation in non-production environments
+    if isinstance(settings, DatabaseSettings):
+        # Seeding should happen after app startup completes; use background task
+        @application.on_event("startup")
+        async def _seed_rbac() -> None:
+            try:
+                await seed_initial_rbac()
+            except Exception:
+                # Avoid crashing app if seeding fails; you can check logs
+                pass
 
     if isinstance(settings, ClientSideCacheSettings):
         application.add_middleware(ClientCacheMiddleware, max_age=settings.CLIENT_CACHE_MAX_AGE)

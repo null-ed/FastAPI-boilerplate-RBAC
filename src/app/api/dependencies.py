@@ -12,6 +12,10 @@ from ..core.utils.rate_limit import rate_limiter
 from ..crud.crud_rate_limit import crud_rate_limits
 from ..crud.crud_tier import crud_tiers
 from ..crud.crud_users import crud_users
+from sqlalchemy import select
+from ..core.permissions import PermissionNames
+from ..models.permission import Permission
+from ..models.user_role import UserRole
 from ..schemas.rate_limit import RateLimitRead, sanitize_path
 from ..schemas.tier import TierRead
 
@@ -73,6 +77,53 @@ async def get_current_superuser(current_user: Annotated[dict, Depends(get_curren
         raise ForbiddenException("You do not have enough privileges.")
 
     return current_user
+
+
+# RBAC: bottom-layer permission check using unified Permission grants
+async def has_permission(
+    user: dict,
+    permission_name: str,
+    db: AsyncSession,
+) -> bool:
+    # Superuser bypass
+    if user.get("is_superuser"):
+        return True
+
+    # 1) Direct user-level grant
+    direct_q = await db.execute(
+        select(Permission.id).where(
+            Permission.user_id == user["id"],
+            Permission.permission_name == permission_name,
+        )
+    )
+    if direct_q.scalar_one_or_none():
+        return True
+
+    # 2) Role-level grant via UserRole association
+    role_q = await db.execute(
+        select(Permission.id)
+        .join(UserRole, UserRole.role_id == Permission.role_id)
+        .where(
+            UserRole.user_id == user["id"],
+            Permission.permission_name == permission_name,
+        )
+    )
+    if role_q.scalar_one_or_none():
+        return True
+
+    return False
+
+
+# RBAC: function-style dependency factory, consistent with existing project style
+def require_permission(permission_name: str):
+    async def _checker(
+        current_user: Annotated[dict, Depends(get_current_user)],
+        db: Annotated[AsyncSession, Depends(async_get_db)],
+    ) -> None:
+        allowed = await has_permission(current_user, permission_name, db)
+        if not allowed:
+            raise ForbiddenException("You do not have enough privileges.")
+    return _checker
 
 
 async def rate_limiter_dependency(

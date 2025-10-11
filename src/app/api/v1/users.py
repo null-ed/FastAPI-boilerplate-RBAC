@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, Request
 from fastcrud.paginated import PaginatedListResponse, compute_offset, paginated_response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...api.dependencies import get_current_superuser, get_current_user
+from ...api.dependencies import get_current_superuser, get_current_user, require_permission
+from ...core.permissions import PermissionNames
 from ...core.db.database import async_get_db
 from ...core.exceptions.http_exceptions import DuplicateValueException, ForbiddenException, NotFoundException
 from ...core.security import blacklist_token, get_password_hash, oauth2_scheme
@@ -127,7 +128,7 @@ async def erase_user(
     return {"message": "User deleted"}
 
 
-@router.delete("/db_user/{username}", dependencies=[Depends(get_current_superuser)])
+@router.delete("/db_user/{username}", dependencies=[Depends(get_current_superuser), Depends(require_permission(PermissionNames.USER_DELETE))])
 async def erase_db_user(
     request: Request,
     username: str,
