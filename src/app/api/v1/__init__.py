@@ -10,7 +10,7 @@ from .roles import router as roles_router
 from .user_roles import router as user_roles_router
 from .auth import router as auth_router
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter(prefix="/v1")
 router.include_router(auth_router)
 router.include_router(users_router)
 router.include_router(roles_router)
