@@ -4,6 +4,7 @@ from typing import Any
 
 import anyio
 import fastapi
+from fastapi.routing import APIRoute
 import redis.asyncio as redis
 from arq import create_pool
 from arq.connections import RedisSettings
@@ -72,6 +73,22 @@ async def close_redis_rate_limit_pool() -> None:
     if rate_limiter.client is not None:
         await rate_limiter.client.aclose()  # type: ignore
 
+
+def custom_generate_unique_id(route: APIRoute) -> str:
+    """
+    格式：{tag}_{function_name}
+    """
+    
+    # 1. 获取 Tag（主资源）
+    tag = route.tags[0] if route.tags else "default"
+    
+    # 2. 获取函数名（操作动词 + 子资源）
+    function_name = route.name
+    
+    # 3. 组合并清理
+    operation_id = f"{tag}_{function_name}".lower().replace('-', '_').replace(' ', '_')
+    
+    return operation_id
 
 # -------------- application --------------
 async def set_threadpool_tokens(number_of_tokens: int = 100) -> None:
@@ -283,7 +300,7 @@ def create_application(
     if lifespan is None:
         lifespan = lifespan_factory(settings, create_tables_on_start=create_tables_on_start)
 
-    application = FastAPI(lifespan=lifespan, **kwargs)
+    application = FastAPI(lifespan=lifespan, generate_unique_id_function=custom_generate_unique_id, **kwargs)
     application.include_router(router)
 
     # Seed initial RBAC after tables creation in non-production environments

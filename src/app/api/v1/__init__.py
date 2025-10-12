@@ -9,9 +9,14 @@ from .permissions import router as permissions_router
 from .roles import router as roles_router
 from .user_roles import router as user_roles_router
 from .auth import router as auth_router
+# from .login import router as login_router
+# from .logout import router as logout_router
+
 
 router = APIRouter(prefix="/v1")
 router.include_router(auth_router)
+# router.include_router(login_router)
+# router.include_router(logout_router)
 router.include_router(users_router)
 router.include_router(roles_router)
 router.include_router(permissions_router)

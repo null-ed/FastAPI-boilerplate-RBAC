@@ -19,7 +19,7 @@ from ...schemas.role import (
     PermissionAssign,
 )
 
-router = APIRouter(prefix="/roles", tags=["roles"])
+router = APIRouter(prefix="/role", tags=["roles"])
 
 
 @router.post("/", dependencies=[Depends(require_permission(PermissionNames.ROLE_CREATE))], response_model=RolePermissionsRead, status_code=201)
