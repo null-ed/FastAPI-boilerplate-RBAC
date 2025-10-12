@@ -5,6 +5,7 @@ from pydantic import SecretStr
 from pydantic_settings import BaseSettings
 from starlette.config import Config
 
+
 current_file_dir = os.path.dirname(os.path.realpath(__file__))
 env_path = os.path.join(current_file_dir, "..", "..", ".env")
 config = Config(env_path)
@@ -79,6 +80,17 @@ class RedisCacheSettings(BaseSettings):
 class ClientSideCacheSettings(BaseSettings):
     CLIENT_CACHE_MAX_AGE: int = config("CLIENT_CACHE_MAX_AGE", default=60)
 
+# CORS settings: no default allowed origins; empty list if not provided
+class CORSSettings(BaseSettings):
+    CORS_ORIGINS_RAW: str | None = config("CORS_ORIGINS", default=None)
+
+    @property
+    def CORS_ORIGINS(self) -> list[str]:
+        raw = self.CORS_ORIGINS_RAW
+        if raw is None or raw.strip() == "":
+            return []
+        return [s.strip() for s in raw.split(",") if s.strip()]
+
 
 class RedisQueueSettings(BaseSettings):
     REDIS_QUEUE_HOST: str = config("REDIS_QUEUE_HOST", default="localhost")
@@ -136,6 +148,7 @@ class Settings(
     TestSettings,
     # RedisCacheSettings,
     ClientSideCacheSettings,
+    CORSSettings,
     # RedisQueueSettings,
     # RedisRateLimiterSettings,
     DefaultRateLimitSettings,

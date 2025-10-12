@@ -21,7 +21,7 @@ from ...core.security import (
     oauth2_scheme,
 )
 
-router = APIRouter(tags=["auth"])  # Combined login/logout endpoints
+router = APIRouter(prefix="/auth", tags=["auth"])  # Combined login/logout endpoints
 
 
 @router.post("/login", response_model=Token)

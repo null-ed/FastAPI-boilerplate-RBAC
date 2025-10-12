@@ -8,6 +8,7 @@ import redis.asyncio as redis
 from arq import create_pool
 from arq.connections import RedisSettings
 from fastapi import APIRouter, Depends, FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 from fastapi.openapi.utils import get_openapi
 
@@ -18,6 +19,7 @@ from ..models import *  # noqa: F403
 from .config import (
     AppSettings,
     ClientSideCacheSettings,
+    CORSSettings,
     DatabaseSettings,
     EnvironmentOption,
     EnvironmentSettings,
@@ -218,6 +220,7 @@ def create_application(
         | RedisQueueSettings
         | RedisRateLimiterSettings
         | EnvironmentSettings
+        | CORSSettings
     ),
     create_tables_on_start: bool = True,
     lifespan: Callable[[FastAPI], _AsyncGeneratorContextManager[Any]] | None = None,
@@ -297,6 +300,17 @@ def create_application(
     if isinstance(settings, ClientSideCacheSettings):
         application.add_middleware(ClientCacheMiddleware, max_age=settings.CLIENT_CACHE_MAX_AGE)
 
+    # Enable CORS only if origins are provided via environment
+    if isinstance(settings, CORSSettings):
+        origins = settings.CORS_ORIGINS
+        if isinstance(origins, list) and origins:
+            application.add_middleware(
+                CORSMiddleware,
+                allow_origins=origins,
+                allow_credentials=True,
+                allow_methods=["*"],
+                allow_headers=["*"],
+            )
     if isinstance(settings, EnvironmentSettings):
         if settings.ENVIRONMENT != EnvironmentOption.PRODUCTION:
             docs_router = APIRouter()
