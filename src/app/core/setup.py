@@ -197,8 +197,7 @@ async def seed_initial_rbac() -> None:
             PermissionNames.ROLE_READ,
             PermissionNames.ROLE_CREATE,
             PermissionNames.ROLE_UPDATE,
-            PermissionNames.ROLE_ASSIGN,
-            PermissionNames.ROLE_REVOKE,
+            # Removed ROLE_ASSIGN and ROLE_REVOKE
             PermissionNames.ROOT,
             # ensure delete role permission seeded
             getattr(PermissionNames, 'ROLE_DELETE', PermissionNames.ROLE_UPDATE),

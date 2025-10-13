@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Request
 from fastcrud.paginated import PaginatedListResponse, compute_offset, paginated_response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...api.dependencies import get_current_superuser, get_current_user, require_permission
+from ...api.dependencies import get_current_superuser, get_current_user, require_permission, get_optional_user, has_permission
 from ...core.permissions import PermissionNames
 from ...core.db.database import async_get_db
 from ...core.exceptions.http_exceptions import DuplicateValueException, ForbiddenException, NotFoundException
@@ -12,6 +12,8 @@ from ...core.security import blacklist_token, get_password_hash, oauth2_scheme
 from ...crud.crud_rate_limit import crud_rate_limits
 from ...crud.crud_tier import crud_tiers
 from ...crud.crud_users import crud_users
+from ...crud.crud_roles import crud_roles
+from ...crud.crud_user_roles import assign_role_to_user, remove_role_from_user, list_user_roles
 from ...schemas.tier import TierRead
 from ...schemas.user import UserCreate, UserCreateInternal, UserRead, UserTierUpdate, UserUpdate
 
@@ -20,7 +22,7 @@ router = APIRouter(tags=["users"])
 
 @router.post("/user", response_model=UserRead, status_code=201)
 async def write_user(
-    request: Request, user: UserCreate, db: Annotated[AsyncSession, Depends(async_get_db)]
+    request: Request, user: UserCreate, db: Annotated[AsyncSession, Depends(async_get_db)], optional_user: Annotated[dict | None, Depends(get_optional_user)]
 ) -> UserRead:
     email_row = await crud_users.exists(db=db, email=user.email)
     if email_row:
@@ -35,8 +37,28 @@ async def write_user(
     del user_internal_dict["password"]
 
     user_internal = UserCreateInternal(**user_internal_dict)
-    created_user = await crud_users.create(db=db, object=user_internal)
+    
+    # Use transaction context manager to ensure atomicity
+    async with db.begin():
+        created_user = await crud_users.create(db=db, object=user_internal)
 
+        # Assign roles at creation if role_ids provided; authorization linked to USER_CREATE
+        if getattr(user, "role_ids", None):
+            authorized = False
+            if optional_user is not None:
+                # Allow if superuser or has USER_CREATE
+                authorized = optional_user.get("is_superuser") or await has_permission(optional_user, PermissionNames.USER_CREATE, db)
+            if authorized:
+                # Validate all role IDs exist before any assignment
+                for rid in user.role_ids:
+                    role = await crud_roles.get(db=db, id=rid)
+                    if role is None:
+                        raise NotFoundException(f"Role not found: {rid}")
+                # Assign all roles (within the same transaction)
+                for rid in user.role_ids:
+                    await assign_role_to_user(db, created_user.id, rid)
+
+    # Fetch the created user with all data (outside transaction for read-only operation)
     user_read = await crud_users.get(db=db, id=created_user.id, schema_to_select=UserRead)
     if user_read is None:
         raise NotFoundException("Created user not found")
@@ -89,22 +111,64 @@ async def patch_user(
     if isinstance(db_user, dict):
         db_username = db_user["username"]
         db_email = db_user["email"]
+        target_user_id = db_user["id"]
     else:
         db_username = db_user.username
         db_email = db_user.email
+        target_user_id = db_user.id
 
-    if db_username != current_user["username"]:
+    is_self = db_username == current_user["username"]
+    role_ids = getattr(values, "role_ids", None)
+    non_role_update = any([
+        values.name is not None,
+        values.username is not None,
+        values.email is not None,
+        values.profile_image_url is not None,
+    ])
+
+    # Only allow non-role updates on self
+    if not is_self and non_role_update:
         raise ForbiddenException()
 
-    if values.email is not None and values.email != db_email:
-        if await crud_users.exists(db=db, email=values.email):
-            raise DuplicateValueException("Email is already registered")
- 
-    if values.username is not None and values.username != db_username:
-        if await crud_users.exists(db=db, username=values.username):
-            raise DuplicateValueException("Username not available")
+    # Use transaction context manager to ensure atomicity
+    async with db.begin():
+        # Duplicate checks for email/username when changing them
+        if non_role_update and values.email is not None and values.email != db_email:
+            if await crud_users.exists(db=db, email=values.email):
+                raise DuplicateValueException("Email is already registered")
 
-    await crud_users.update(db=db, object=values, username=username)
+        if non_role_update and values.username is not None and values.username != db_username:
+            if await crud_users.exists(db=db, username=values.username):
+                raise DuplicateValueException("Username not available")
+
+        # Persist non-role updates (exclude role_ids from update payload)
+        if non_role_update:
+            await crud_users.update(db=db, object=values.model_dump(exclude={"role_ids"}, exclude_unset=True), username=username)
+
+        # Handle role assignment updates if provided
+        if role_ids is not None:
+            # Authorization: superuser or has USER_UPDATE
+            authorized_role_assign = current_user.get("is_superuser") or await has_permission(current_user, PermissionNames.USER_UPDATE, db)
+            if not authorized_role_assign:
+                raise ForbiddenException("You do not have enough privileges to assign roles.")
+            
+            # Validate all role IDs exist before any role operations
+            for rid in role_ids:
+                role = await crud_roles.get(db=db, id=rid)
+                if role is None:
+                    raise NotFoundException(f"Role not found: {rid}")
+
+            current_role_ids = await list_user_roles(db, target_user_id)
+            desired = set(role_ids)
+            current = set(current_role_ids)
+
+            # Add missing roles
+            for rid in desired - current:
+                await assign_role_to_user(db, target_user_id, rid)
+            # Remove roles not desired
+            for rid in current - desired:
+                await remove_role_from_user(db, target_user_id, rid)
+
     return {"message": "User updated"}
 
 

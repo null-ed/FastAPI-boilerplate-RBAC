@@ -20,8 +20,7 @@ class PermissionNames:
     ROLE_READ = "role:read"
     ROLE_CREATE = "role:create"
     ROLE_UPDATE = "role:update"
-    ROLE_ASSIGN = "role:assign"
-    ROLE_REVOKE = "role:revoke"
+    # ROLE_ASSIGN and ROLE_REVOKE removed per requirements
     ROLE_DELETE = "role:delete"
 
 
@@ -65,8 +64,7 @@ permission_role_manage = PermissionNode(
         PermissionNode(PermissionNames.ROLE_CREATE, display_name="创建角色"),
         PermissionNode(PermissionNames.ROLE_READ, display_name="查看角色"),
         PermissionNode(PermissionNames.ROLE_UPDATE, display_name="更新角色"),
-        PermissionNode(PermissionNames.ROLE_ASSIGN, display_name="分配角色权限"),
-        PermissionNode(PermissionNames.ROLE_REVOKE, display_name="撤销角色权限"),
+        # Removed assign/revoke nodes per requirements
         PermissionNode(PermissionNames.ROLE_DELETE, display_name="删除角色"),
     ],
 )

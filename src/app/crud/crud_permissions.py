@@ -11,7 +11,6 @@ async def assign_permission_to_role(db: AsyncSession, role_id: int, permission_n
     if existing.scalar_one_or_none():
         return
     db.add(Permission(permission_name=permission_name, role_id=role_id))
-    await db.commit()
 
 
 async def remove_permission_from_role(db: AsyncSession, role_id: int, permission_name: str) -> bool:
@@ -22,7 +21,6 @@ async def remove_permission_from_role(db: AsyncSession, role_id: int, permission
     if not perm:
         return False
     await db.delete(perm)
-    await db.commit()
     return True
 
 

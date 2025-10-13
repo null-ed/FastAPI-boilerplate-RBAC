@@ -33,6 +33,8 @@ class UserCreate(UserBase):
     model_config = ConfigDict(extra="forbid")
 
     password: Annotated[str, Field(pattern=r"^.{8,}|[0-9]+|[A-Z]+|[a-z]+|[^a-zA-Z0-9]+$", examples=["Str1ngst!"])]
+    # Optional list of role IDs to assign at creation (only processed if caller has permission)
+    role_ids: Annotated[list[int] | None, Field(default=None)]
 
 
 class UserCreateInternal(UserBase):
@@ -53,6 +55,8 @@ class UserUpdate(BaseModel):
             pattern=r"^(https?|ftp)://[^\s/$.?#].[^\s]*$", examples=["https://www.profileimageurl.com"], default=None
         ),
     ]
+    # Desired set of role IDs (only processed if caller has permission)
+    role_ids: Annotated[list[int] | None, Field(default=None)]
 
 
 class UserUpdateInternal(UserUpdate):

@@ -9,7 +9,6 @@ async def assign_role_to_user(db: AsyncSession, user_id: int, role_id: int) -> N
     if existing.scalar_one_or_none():
         return
     db.add(UserRole(user_id=user_id, role_id=role_id))
-    await db.commit()
 
 
 async def remove_role_from_user(db: AsyncSession, user_id: int, role_id: int) -> bool:
@@ -18,7 +17,6 @@ async def remove_role_from_user(db: AsyncSession, user_id: int, role_id: int) ->
     if not link:
         return False
     await db.delete(link)
-    await db.commit()
     return True
 
 
