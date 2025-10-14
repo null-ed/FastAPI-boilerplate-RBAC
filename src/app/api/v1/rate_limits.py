@@ -32,7 +32,8 @@ async def write_rate_limit(
         raise DuplicateValueException("Rate Limit Name not available")
 
     rate_limit_internal = RateLimitCreateInternal(**rate_limit_internal_dict)
-    created_rate_limit = await crud_rate_limits.create(db=db, object=rate_limit_internal)
+    async with db.begin():
+        created_rate_limit = await crud_rate_limits.create(db=db, object=rate_limit_internal)
 
     rate_limit_read = await crud_rate_limits.get(db=db, id=created_rate_limit.id, schema_to_select=RateLimitRead)
     if rate_limit_read is None:
@@ -98,7 +99,8 @@ async def patch_rate_limit(
     if db_rate_limit is None:
         raise NotFoundException("Rate Limit not found")
 
-    await crud_rate_limits.update(db=db, object=values, id=id)
+    async with db.begin():
+        await crud_rate_limits.update(db=db, object=values, id=id)
     return {"message": "Rate Limit updated"}
 
 
@@ -115,5 +117,6 @@ async def erase_rate_limit(
     if db_rate_limit is None:
         raise NotFoundException("Rate Limit not found")
 
-    await crud_rate_limits.delete(db=db, id=id)
+    async with db.begin():
+        await crud_rate_limits.delete(db=db, id=id)
     return {"message": "Rate Limit deleted"}

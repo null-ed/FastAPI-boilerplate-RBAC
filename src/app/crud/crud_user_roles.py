@@ -18,8 +18,3 @@ async def remove_role_from_user(db: AsyncSession, user_id: int, role_id: int) ->
         return False
     await db.delete(link)
     return True
-
-
-async def list_user_roles(db: AsyncSession, user_id: int) -> list[int]:
-    q = await db.execute(select(UserRole.role_id).where(UserRole.user_id == user_id))
-    return [row[0] for row in q.all()]

@@ -40,7 +40,7 @@ async def write_user(
     
     # Use transaction context manager to ensure atomicity
     async with db.begin():
-        created_user = await crud_users.create(db=db, object=user_internal)
+        created_user = await crud_users.create(db=db, object=user_internal, commit=False)
 
         # Assign roles at creation if role_ids provided; authorization linked to USER_CREATE
         if getattr(user, "role_ids", None):
@@ -187,8 +187,9 @@ async def erase_user(
     if username != current_user["username"]:
         raise ForbiddenException()
 
-    await crud_users.delete(db=db, username=username)
-    await blacklist_token(token=token, db=db)
+    async with db.begin():
+        await crud_users.delete(db=db, username=username)
+        await blacklist_token(token=token, db=db)
     return {"message": "User deleted"}
 
 
@@ -203,8 +204,9 @@ async def erase_db_user(
     if not db_user:
         raise NotFoundException("User not found")
 
-    await crud_users.db_delete(db=db, username=username)
-    await blacklist_token(token=token, db=db)
+    async with db.begin():
+        await crud_users.db_delete(db=db, username=username)
+        await blacklist_token(token=token, db=db)
     return {"message": "User deleted from the database"}
 
 
@@ -274,5 +276,6 @@ async def patch_user_tier(
     if db_tier is None:
         raise NotFoundException("Tier not found")
 
-    await crud_users.update(db=db, object=values.model_dump(), username=username)
+    async with db.begin():
+        await crud_users.update(db=db, object=values.model_dump(), username=username)
     return {"message": f"User {db_user.name} Tier updated"}

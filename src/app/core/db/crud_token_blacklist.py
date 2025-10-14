@@ -1,9 +1,9 @@
-from fastcrud import FastCRUD
+from ...crud.custom_fastcrud import FastCRUDNoCommit
 
 from ..db.token_blacklist import TokenBlacklist
 from ..schemas import TokenBlacklistCreate, TokenBlacklistRead, TokenBlacklistUpdate
 
-CRUDTokenBlacklist = FastCRUD[
+CRUDTokenBlacklist = FastCRUDNoCommit[
     TokenBlacklist,
     TokenBlacklistCreate,
     TokenBlacklistUpdate,

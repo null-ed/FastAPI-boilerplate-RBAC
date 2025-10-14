@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from sqlalchemy import Boolean, DateTime, String
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from ..core.db.database import Base
 
@@ -17,3 +17,9 @@ class Role(Base):
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default_factory=lambda: datetime.now(UTC))
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None)
+
+    permission_maps: Mapped[list["PermissionMap"]] = relationship(
+        "PermissionMap",
+        lazy="selectin",
+    )
+    

@@ -23,7 +23,8 @@ async def write_tier(
         raise DuplicateValueException("Tier Name not available")
 
     tier_internal = TierCreateInternal(**tier_internal_dict)
-    created_tier = await crud_tiers.create(db=db, object=tier_internal)
+    async with db.begin():
+        created_tier = await crud_tiers.create(db=db, object=tier_internal)
 
     tier_read = await crud_tiers.get(db=db, id=created_tier.id, schema_to_select=TierRead)
     if tier_read is None:
@@ -59,7 +60,8 @@ async def patch_tier(
     if db_tier is None:
         raise NotFoundException("Tier not found")
 
-    await crud_tiers.update(db=db, object=values, name=name)
+    async with db.begin():
+        await crud_tiers.update(db=db, object=values, name=name)
     return {"message": "Tier updated"}
 
 
@@ -69,5 +71,6 @@ async def erase_tier(request: Request, name: str, db: Annotated[AsyncSession, De
     if db_tier is None:
         raise NotFoundException("Tier not found")
 
-    await crud_tiers.delete(db=db, name=name)
+    async with db.begin():
+        await crud_tiers.delete(db=db, name=name)
     return {"message": "Tier deleted"}

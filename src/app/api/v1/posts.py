@@ -37,7 +37,8 @@ async def write_post(
     post_internal_dict["created_by_user_id"] = db_user.id
 
     post_internal = PostCreateInternal(**post_internal_dict)
-    created_post = await crud_posts.create(db=db, object=post_internal)
+    async with db.begin():
+        created_post = await crud_posts.create(db=db, object=post_internal)
 
     post_read = await crud_posts.get(db=db, id=created_post.id, schema_to_select=PostRead)
     if post_read is None:
@@ -135,7 +136,8 @@ async def patch_post(
     if db_post is None:
         raise NotFoundException("Post not found")
 
-    await crud_posts.update(db=db, object=values, id=id)
+    async with db.begin():
+        await crud_posts.update(db=db, object=values, id=id)
     return {"message": "Post updated"}
 
 
@@ -166,7 +168,8 @@ async def erase_post(
     if db_post is None:
         raise NotFoundException("Post not found")
 
-    await crud_posts.delete(db=db, id=id)
+    async with db.begin():
+        await crud_posts.delete(db=db, id=id)
 
     return {"message": "Post deleted"}
 
@@ -190,5 +193,6 @@ async def erase_db_post(
     if db_post is None:
         raise NotFoundException("Post not found")
 
-    await crud_posts.db_delete(db=db, id=id)
+    async with db.begin():
+        await crud_posts.db_delete(db=db, id=id)
     return {"message": "Post deleted from the database"}

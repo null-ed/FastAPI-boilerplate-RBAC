@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from ..core.db.database import Base
 
 
-class Permission(Base):
+class PermissionMap(Base):
     __tablename__ = "permission"
     __table_args__ = (
         UniqueConstraint("permission_name", "user_id", name="uq_permission_user"),
