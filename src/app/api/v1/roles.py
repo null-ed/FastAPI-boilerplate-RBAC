@@ -45,7 +45,7 @@ async def create_role(
         for perm in role_in.permission_names:
             await assign_permission_to_role(db, role_id=role_read.id, permission_name=perm)
 
-    perms = await list_role_permissions(db, role_id=role_read.id)
+    perms = created.permission_names
     return RolePermissionsRead(**role_read.model_dump(), permissions=perms)
 
 
@@ -61,7 +61,7 @@ async def read_role(request: Request, role_id: int, db: Annotated[AsyncSession, 
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
     role = cast(RoleRead, role)
-    perms = await list_role_permissions(db, role_id=role.id)
+    perms = role.permission_names
     return RolePermissionsRead(**role.model_dump(), permissions=perms)
 
 
