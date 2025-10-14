@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from ...api.dependencies import get_current_superuser, require_permission
+from ...core.decorators.unit_of_work import transactional
 from ...core.permissions import PermissionNames
 from ...core.db.database import async_get_db
 from ...crud.crud_roles import crud_roles
@@ -23,6 +24,7 @@ router = APIRouter(prefix="/role", tags=["roles"])
 
 
 @router.post("/", dependencies=[Depends(require_permission(PermissionNames.ROLE_CREATE))], response_model=RolePermissionsRead, status_code=201)
+@transactional()
 async def create_role(
     request: Request, role_in: RoleCreate, db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> RolePermissionsRead:
@@ -31,18 +33,17 @@ async def create_role(
     if existing:
         raise HTTPException(status_code=400, detail="The role with this name already exists in the system.")
 
-    async with db.begin():
-        created = await crud_roles.create(db=db, object=RoleCreateInternal(**role_in.model_dump()))
+    # Create role (transaction managed by decorator)
+    created = await crud_roles.create(db=db, object=RoleCreateInternal(**role_in.model_dump()), commit=False)
     role_read = await crud_roles.get(db=db, id=created.id, schema_to_select=RoleRead)
     if role_read is None:
         raise HTTPException(status_code=404, detail="Created role not found")
     role_read = cast(RoleRead, role_read)
 
-    # Assign permissions if provided
+    # Assign permissions if provided (within the same transaction)
     if role_in.permission_names:
-        async with db.begin():
-            for perm in role_in.permission_names:
-                await assign_permission_to_role(db, role_id=role_read.id, permission_name=perm)
+        for perm in role_in.permission_names:
+            await assign_permission_to_role(db, role_id=role_read.id, permission_name=perm)
 
     perms = await list_role_permissions(db, role_id=role_read.id)
     return RolePermissionsRead(**role_read.model_dump(), permissions=perms)
@@ -65,6 +66,7 @@ async def read_role(request: Request, role_id: int, db: Annotated[AsyncSession, 
 
 
 @router.put("/{role_id}", dependencies=[Depends(require_permission(PermissionNames.ROLE_UPDATE))], response_model=RolePermissionsRead)
+@transactional()
 async def update_role(
     request: Request, role_id: int, role_in: RoleUpdate, db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> RolePermissionsRead:
@@ -78,19 +80,18 @@ async def update_role(
         if existing and cast(RoleRead, existing).id != cast(RoleRead, role).id:
             raise HTTPException(status_code=400, detail="The role with this name already exists in the system.")
 
-    async with db.begin():
-        await crud_roles.update(db=db, object=RoleUpdateInternal(**role_in.model_dump(exclude_unset=True), updated_at=None), id=role_id)
+    # Update role (transaction managed by decorator)
+    await crud_roles.update(db=db, object=RoleUpdateInternal(**role_in.model_dump(exclude_unset=True), updated_at=None), id=role_id, commit=False)
 
-    # Update permissions if provided
+    # Update permissions if provided (within the same transaction)
     if role_in.permission_names is not None:
-        async with db.begin():
-            # Remove all existing permissions for role
-            current_perms = await list_role_permissions(db, role_id=role_id)
-            for p in current_perms:
-                await remove_permission_from_role(db, role_id=role_id, permission_name=p)
-            # Add new ones
-            for p in role_in.permission_names:
-                await assign_permission_to_role(db, role_id=role_id, permission_name=p)
+        # Remove all existing permissions for role
+        current_perms = await list_role_permissions(db, role_id=role_id)
+        for p in current_perms:
+            await remove_permission_from_role(db, role_id=role_id, permission_name=p)
+        # Add new ones
+        for p in role_in.permission_names:
+            await assign_permission_to_role(db, role_id=role_id, permission_name=p)
 
     updated = await crud_roles.get(db=db, id=role_id, schema_to_select=RoleRead)
     if updated is None:
@@ -101,29 +102,28 @@ async def update_role(
 
 
 @router.delete("/{role_id}", dependencies=[Depends(require_permission(PermissionNames.ROLE_DELETE))])
+@transactional()
 async def delete_role(request: Request, role_id: int, db: Annotated[AsyncSession, Depends(async_get_db)]) -> dict[str, str]:
     role = await crud_roles.get(db=db, id=role_id, schema_to_select=RoleRead)
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
 
-    # Delete role's permissions and user-role links
+    # Delete role's permissions and user-role links (transaction managed by decorator)
     from ...models.user_role import UserRole
     from ...models.permission import Permission
 
     # Remove UserRole links
-    async with db.begin():
-        links = await db.execute(select(UserRole).where(UserRole.role_id == role_id))
-        for link in links.scalars().all():
-            await db.delete(link)
+    links = await db.execute(select(UserRole).where(UserRole.role_id == role_id))
+    for link in links.scalars().all():
+        await db.delete(link)
 
     # Remove permissions
-    async with db.begin():
-        perms_q = await db.execute(select(Permission).where(Permission.role_id == role_id))
-        for perm in perms_q.scalars().all():
-            await db.delete(perm)
+    perms_q = await db.execute(select(Permission).where(Permission.role_id == role_id))
+    for perm in perms_q.scalars().all():
+        await db.delete(perm)
 
-    async with db.begin():
-        await crud_roles.db_delete(db=db, id=role_id)
+    # Delete role
+    await crud_roles.db_delete(db=db, id=role_id, commit=False)
     return {"message": "Role deleted"}
 
 

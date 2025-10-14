@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...api.dependencies import get_current_superuser
 from ...core.db.database import async_get_db
+from ...core.decorators.unit_of_work import transactional
 from ...core.exceptions.http_exceptions import DuplicateValueException, NotFoundException
 from ...crud.crud_rate_limit import crud_rate_limits
 from ...crud.crud_tier import crud_tiers
@@ -16,6 +17,7 @@ router = APIRouter(tags=["rate_limits"])
 
 
 @router.post("/tier/{tier_name}/rate_limit", dependencies=[Depends(get_current_superuser)], status_code=201)
+@transactional()
 async def write_rate_limit(
     request: Request, tier_name: str, rate_limit: RateLimitCreate, db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> RateLimitRead:
@@ -32,8 +34,8 @@ async def write_rate_limit(
         raise DuplicateValueException("Rate Limit Name not available")
 
     rate_limit_internal = RateLimitCreateInternal(**rate_limit_internal_dict)
-    async with db.begin():
-        created_rate_limit = await crud_rate_limits.create(db=db, object=rate_limit_internal)
+    # Transaction managed by decorator
+    created_rate_limit = await crud_rate_limits.create(db=db, object=rate_limit_internal, commit=False)
 
     rate_limit_read = await crud_rate_limits.get(db=db, id=created_rate_limit.id, schema_to_select=RateLimitRead)
     if rate_limit_read is None:
@@ -83,6 +85,7 @@ async def read_rate_limit(
 
 
 @router.patch("/tier/{tier_name}/rate_limit/{id}", dependencies=[Depends(get_current_superuser)])
+@transactional()
 async def patch_rate_limit(
     request: Request,
     tier_name: str,
@@ -99,12 +102,13 @@ async def patch_rate_limit(
     if db_rate_limit is None:
         raise NotFoundException("Rate Limit not found")
 
-    async with db.begin():
-        await crud_rate_limits.update(db=db, object=values, id=id)
+    # Transaction managed by decorator
+    await crud_rate_limits.update(db=db, object=values, id=id, commit=False)
     return {"message": "Rate Limit updated"}
 
 
 @router.delete("/tier/{tier_name}/rate_limit/{id}", dependencies=[Depends(get_current_superuser)])
+@transactional()
 async def erase_rate_limit(
     request: Request, tier_name: str, id: int, db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> dict[str, str]:
@@ -117,6 +121,6 @@ async def erase_rate_limit(
     if db_rate_limit is None:
         raise NotFoundException("Rate Limit not found")
 
-    async with db.begin():
-        await crud_rate_limits.delete(db=db, id=id)
+    # Transaction managed by decorator
+    await crud_rate_limits.delete(db=db, id=id, commit=False)
     return {"message": "Rate Limit deleted"}

@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...api.dependencies import get_current_superuser
 from ...core.db.database import async_get_db
+from ...core.decorators.unit_of_work import transactional
 from ...core.exceptions.http_exceptions import DuplicateValueException, NotFoundException
 from ...crud.crud_tier import crud_tiers
 from ...schemas.tier import TierCreate, TierCreateInternal, TierRead, TierUpdate
@@ -14,6 +15,7 @@ router = APIRouter(tags=["tiers"])
 
 
 @router.post("/tier", dependencies=[Depends(get_current_superuser)], status_code=201)
+@transactional()
 async def write_tier(
     request: Request, tier: TierCreate, db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> TierRead:
@@ -23,8 +25,8 @@ async def write_tier(
         raise DuplicateValueException("Tier Name not available")
 
     tier_internal = TierCreateInternal(**tier_internal_dict)
-    async with db.begin():
-        created_tier = await crud_tiers.create(db=db, object=tier_internal)
+    # Transaction managed by decorator
+    created_tier = await crud_tiers.create(db=db, object=tier_internal, commit=False)
 
     tier_read = await crud_tiers.get(db=db, id=created_tier.id, schema_to_select=TierRead)
     if tier_read is None:
@@ -53,6 +55,7 @@ async def read_tier(request: Request, name: str, db: Annotated[AsyncSession, Dep
 
 
 @router.patch("/tier/{name}", dependencies=[Depends(get_current_superuser)])
+@transactional()
 async def patch_tier(
     request: Request, name: str, values: TierUpdate, db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> dict[str, str]:
@@ -60,17 +63,18 @@ async def patch_tier(
     if db_tier is None:
         raise NotFoundException("Tier not found")
 
-    async with db.begin():
-        await crud_tiers.update(db=db, object=values, name=name)
+    # Transaction managed by decorator
+    await crud_tiers.update(db=db, object=values, name=name, commit=False)
     return {"message": "Tier updated"}
 
 
 @router.delete("/tier/{name}", dependencies=[Depends(get_current_superuser)])
+@transactional()
 async def erase_tier(request: Request, name: str, db: Annotated[AsyncSession, Depends(async_get_db)]) -> dict[str, str]:
     db_tier = await crud_tiers.get(db=db, name=name, schema_to_select=TierRead)
     if db_tier is None:
         raise NotFoundException("Tier not found")
 
-    async with db.begin():
-        await crud_tiers.delete(db=db, name=name)
+    # Transaction managed by decorator
+    await crud_tiers.delete(db=db, name=name, commit=False)
     return {"message": "Tier deleted"}

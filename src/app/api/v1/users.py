@@ -5,6 +5,7 @@ from fastcrud.paginated import PaginatedListResponse, compute_offset, paginated_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...api.dependencies import get_current_superuser, get_current_user, require_permission, get_optional_user, has_permission
+from ...core.decorators.unit_of_work import transactional
 from ...core.permissions import PermissionNames
 from ...core.db.database import async_get_db
 from ...core.exceptions.http_exceptions import DuplicateValueException, ForbiddenException, NotFoundException
@@ -21,6 +22,7 @@ router = APIRouter(tags=["users"])
 
 
 @router.post("/user", response_model=UserRead, status_code=201)
+@transactional()
 async def write_user(
     request: Request, user: UserCreate, db: Annotated[AsyncSession, Depends(async_get_db)], optional_user: Annotated[dict | None, Depends(get_optional_user)]
 ) -> UserRead:
@@ -38,25 +40,24 @@ async def write_user(
 
     user_internal = UserCreateInternal(**user_internal_dict)
     
-    # Use transaction context manager to ensure atomicity
-    async with db.begin():
-        created_user = await crud_users.create(db=db, object=user_internal, commit=False)
+    # Create user (transaction managed by decorator)
+    created_user = await crud_users.create(db=db, object=user_internal, commit=False)
 
-        # Assign roles at creation if role_ids provided; authorization linked to USER_CREATE
-        if getattr(user, "role_ids", None):
-            authorized = False
-            if optional_user is not None:
-                # Allow if superuser or has USER_CREATE
-                authorized = optional_user.get("is_superuser") or await has_permission(optional_user, PermissionNames.USER_CREATE, db)
-            if authorized:
-                # Validate all role IDs exist before any assignment
-                for rid in user.role_ids:
-                    role = await crud_roles.get(db=db, id=rid)
-                    if role is None:
-                        raise NotFoundException(f"Role not found: {rid}")
-                # Assign all roles (within the same transaction)
-                for rid in user.role_ids:
-                    await assign_role_to_user(db, created_user.id, rid)
+    # Assign roles at creation if role_ids provided; authorization linked to USER_CREATE
+    if getattr(user, "role_ids", None):
+        authorized = False
+        if optional_user is not None:
+            # Allow if superuser or has USER_CREATE
+            authorized = optional_user.get("is_superuser") or await has_permission(optional_user, PermissionNames.USER_CREATE, db)
+        if authorized:
+            # Validate all role IDs exist before any assignment
+            for rid in user.role_ids:
+                role = await crud_roles.get(db=db, id=rid)
+                if role is None:
+                    raise NotFoundException(f"Role not found: {rid}")
+            # Assign all roles (within the same transaction)
+            for rid in user.role_ids:
+                await assign_role_to_user(db, created_user.id, rid)
 
     # Fetch the created user with all data (outside transaction for read-only operation)
     user_read = await crud_users.get(db=db, id=created_user.id, schema_to_select=UserRead)
@@ -96,104 +97,48 @@ async def read_user(request: Request, username: str, db: Annotated[AsyncSession,
 
 
 
-@router.patch("/user/{username}")
+@router.patch("/user/{user_id}", response_model=UserRead)
+@require_permission(PermissionNames.USER_UPDATE)
+@transactional()
 async def patch_user(
-    request: Request,
-    values: UserUpdate,
-    username: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(async_get_db)],
-) -> dict[str, str]:
-    db_user = await crud_users.get(db=db, username=username)
-    if db_user is None:
+    user_id: int, values: UserUpdate, current_user: Annotated[dict, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(async_get_db)]
+) -> UserRead:
+    user_current = await crud_users.get(db=db, id=user_id)
+    if not user_current:
         raise NotFoundException("User not found")
 
-    if isinstance(db_user, dict):
-        db_username = db_user["username"]
-        db_email = db_user["email"]
-        target_user_id = db_user["id"]
-    else:
-        db_username = db_user.username
-        db_email = db_user.email
-        target_user_id = db_user.id
+    if values.username != user_current.username:
+        existing_username = await crud_users.exists(db=db, username=values.username)
+        if existing_username:
+            raise DuplicateValueException("Username not available")
 
-    is_self = db_username == current_user["username"]
-    role_ids = getattr(values, "role_ids", None)
-    non_role_update = any([
-        values.name is not None,
-        values.username is not None,
-        values.email is not None,
-        values.profile_image_url is not None,
-    ])
+    if values.email != user_current.email:
+        existing_email = await crud_users.exists(db=db, email=values.email)
+        if existing_email:
+            raise DuplicateValueException("Email is already registered")
 
-    # Only allow non-role updates on self
-    if not is_self and non_role_update:
-        raise ForbiddenException()
-
-    # Use transaction context manager to ensure atomicity
-    async with db.begin():
-        # Duplicate checks for email/username when changing them
-        if non_role_update and values.email is not None and values.email != db_email:
-            if await crud_users.exists(db=db, email=values.email):
-                raise DuplicateValueException("Email is already registered")
-
-        if non_role_update and values.username is not None and values.username != db_username:
-            if await crud_users.exists(db=db, username=values.username):
-                raise DuplicateValueException("Username not available")
-
-        # Persist non-role updates (exclude role_ids from update payload)
-        if non_role_update:
-            await crud_users.update(db=db, object=values.model_dump(exclude={"role_ids"}, exclude_unset=True), username=username)
-
-        # Handle role assignment updates if provided
-        if role_ids is not None:
-            # Authorization: superuser or has USER_UPDATE
-            authorized_role_assign = current_user.get("is_superuser") or await has_permission(current_user, PermissionNames.USER_UPDATE, db)
-            if not authorized_role_assign:
-                raise ForbiddenException("You do not have enough privileges to assign roles.")
-            
-            # Validate all role IDs exist before any role operations
-            for rid in role_ids:
-                role = await crud_roles.get(db=db, id=rid)
-                if role is None:
-                    raise NotFoundException(f"Role not found: {rid}")
-
-            current_role_ids = await list_user_roles(db, target_user_id)
-            desired = set(role_ids)
-            current = set(current_role_ids)
-
-            # Add missing roles
-            for rid in desired - current:
-                await assign_role_to_user(db, target_user_id, rid)
-            # Remove roles not desired
-            for rid in current - desired:
-                await remove_role_from_user(db, target_user_id, rid)
-
-    return {"message": "User updated"}
+    # Update user (transaction managed by decorator)
+    updated_user = await crud_users.update(db=db, object=values, id=user_id, commit=False)
+    return cast(UserRead, updated_user)
 
 
-@router.delete("/user/{username}")
+@router.delete("/user/{user_id}")
+@require_permission(PermissionNames.USER_DELETE)
+@transactional()
 async def erase_user(
-    request: Request,
-    username: str,
-    current_user: Annotated[dict, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(async_get_db)],
-    token: str = Depends(oauth2_scheme),
+    user_id: int, current_user: Annotated[dict, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> dict[str, str]:
-    db_user = await crud_users.get(db=db, username=username, schema_to_select=UserRead)
+    db_user = await crud_users.get(db=db, id=user_id)
     if not db_user:
         raise NotFoundException("User not found")
 
-    if username != current_user["username"]:
-        raise ForbiddenException()
-
-    async with db.begin():
-        await crud_users.delete(db=db, username=username)
-        await blacklist_token(token=token, db=db)
+    # Delete user (transaction managed by decorator)
+    await crud_users.delete(db=db, id=user_id, commit=False)
     return {"message": "User deleted"}
 
 
 @router.delete("/db_user/{username}", dependencies=[Depends(get_current_superuser), Depends(require_permission(PermissionNames.USER_DELETE))])
+@transactional()
 async def erase_db_user(
     request: Request,
     username: str,
@@ -204,9 +149,9 @@ async def erase_db_user(
     if not db_user:
         raise NotFoundException("User not found")
 
-    async with db.begin():
-        await crud_users.db_delete(db=db, username=username)
-        await blacklist_token(token=token, db=db)
+    # Delete user and blacklist token (transaction managed by decorator)
+    await crud_users.db_delete(db=db, username=username)
+    await blacklist_token(token=token, db=db)
     return {"message": "User deleted from the database"}
 
 
@@ -263,19 +208,22 @@ async def read_user_tier(
     return user_dict
 
 
-@router.patch("/user/{username}/tier", dependencies=[Depends(get_current_superuser)])
+@router.patch("/user/{user_id}/tier", response_model=UserRead)
+@require_permission(PermissionNames.USER_UPDATE)
+@transactional()
 async def patch_user_tier(
-    request: Request, username: str, values: UserTierUpdate, db: Annotated[AsyncSession, Depends(async_get_db)]
-) -> dict[str, str]:
-    db_user = await crud_users.get(db=db, username=username, schema_to_select=UserRead)
-    if db_user is None:
+    user_id: int, user_tier: UserTierUpdate, current_user: Annotated[dict, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(async_get_db)]
+) -> UserRead:
+    # Check if user exists
+    db_user = await crud_users.get(db=db, id=user_id)
+    if not db_user:
         raise NotFoundException("User not found")
 
-    db_user = cast(UserRead, db_user)
-    db_tier = await crud_tiers.get(db=db, id=values.tier_id, schema_to_select=TierRead)
-    if db_tier is None:
+    # Check if tier exists
+    tier = await crud_tiers.get(db=db, id=user_tier.tier_id)
+    if not tier:
         raise NotFoundException("Tier not found")
 
-    async with db.begin():
-        await crud_users.update(db=db, object=values.model_dump(), username=username)
-    return {"message": f"User {db_user.name} Tier updated"}
+    # Update user tier (transaction managed by decorator)
+    updated_user = await crud_users.update(db=db, object=user_tier, id=user_id, commit=False)
+    return cast(UserRead, updated_user)

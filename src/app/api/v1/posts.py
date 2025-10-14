@@ -4,6 +4,7 @@ from fastcrud.paginated import PaginatedListResponse, compute_offset, paginated_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...api.dependencies import get_current_superuser, get_current_user
+from ...core.decorators.unit_of_work import transactional
 from ...core.db.database import async_get_db
 from ...core.exceptions.http_exceptions import ForbiddenException, NotFoundException
 from ...core.utils.cache import cache
@@ -16,6 +17,7 @@ router = APIRouter(tags=["posts"])
 
 
 @router.post("/{username}/post", response_model=PostRead, status_code=201)
+@transactional()
 async def write_post(
     request: Request,
     username: str,
@@ -37,8 +39,8 @@ async def write_post(
     post_internal_dict["created_by_user_id"] = db_user.id
 
     post_internal = PostCreateInternal(**post_internal_dict)
-    async with db.begin():
-        created_post = await crud_posts.create(db=db, object=post_internal)
+    # Create post (transaction managed by decorator)
+    created_post = await crud_posts.create(db=db, object=post_internal, commit=False)
 
     post_read = await crud_posts.get(db=db, id=created_post.id, schema_to_select=PostRead)
     if post_read is None:
@@ -110,6 +112,7 @@ async def read_post(
 
 @router.patch("/{username}/post/{id}")
 @cache("{username}_post_cache", resource_id_name="id", pattern_to_invalidate_extra=["{username}_posts:*"])
+@transactional()
 async def patch_post(
     request: Request,
     username: str,
@@ -136,13 +139,14 @@ async def patch_post(
     if db_post is None:
         raise NotFoundException("Post not found")
 
-    async with db.begin():
-        await crud_posts.update(db=db, object=values, id=id)
+    # Update post (transaction managed by decorator)
+    await crud_posts.update(db=db, object=values, id=id, commit=False)
     return {"message": "Post updated"}
 
 
 @router.delete("/{username}/post/{id}")
 @cache("{username}_post_cache", resource_id_name="id", to_invalidate_extra={"{username}_posts": "{username}"})
+@transactional()
 async def erase_post(
     request: Request,
     username: str,
@@ -168,14 +172,15 @@ async def erase_post(
     if db_post is None:
         raise NotFoundException("Post not found")
 
-    async with db.begin():
-        await crud_posts.delete(db=db, id=id)
+    # Delete post (transaction managed by decorator)
+    await crud_posts.delete(db=db, id=id, commit=False)
 
     return {"message": "Post deleted"}
 
 
 @router.delete("/{username}/db_post/{id}", dependencies=[Depends(get_current_superuser)])
 @cache("{username}_post_cache", resource_id_name="id", to_invalidate_extra={"{username}_posts": "{username}"})
+@transactional()
 async def erase_db_post(
     request: Request, username: str, id: int, db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> dict[str, str]:
@@ -193,6 +198,6 @@ async def erase_db_post(
     if db_post is None:
         raise NotFoundException("Post not found")
 
-    async with db.begin():
-        await crud_posts.db_delete(db=db, id=id)
+    # Delete post from database (transaction managed by decorator)
+    await crud_posts.db_delete(db=db, id=id, commit=False)
     return {"message": "Post deleted from the database"}

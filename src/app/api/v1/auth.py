@@ -7,6 +7,7 @@ from jose import JWTError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ...core.config import settings, EnvironmentOption
+from ...core.decorators.unit_of_work import transactional
 from ...core.db.database import async_get_db
 from ...core.exceptions.http_exceptions import UnauthorizedException
 from ...core.schemas import Token
@@ -64,6 +65,7 @@ async def refresh_access_token(request: Request, db: AsyncSession = Depends(asyn
 
 
 @router.post("/logout")
+@transactional()
 async def logout(
     response: Response,
     access_token: str = Depends(oauth2_scheme),
@@ -74,6 +76,7 @@ async def logout(
         if not refresh_token:
             raise UnauthorizedException("Refresh token not found")
 
+        # Blacklist tokens (transaction managed by decorator)
         await blacklist_tokens(access_token=access_token, refresh_token=refresh_token, db=db)
         response.delete_cookie(key="refresh_token")
 
