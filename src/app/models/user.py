@@ -34,4 +34,5 @@ class User(Base):
         "Role",
         secondary="user_role",
         lazy="selectin",
+        init=False,
     )

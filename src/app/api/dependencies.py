@@ -14,7 +14,7 @@ from ..crud.crud_tier import crud_tiers
 from ..crud.crud_users import crud_users
 from sqlalchemy import select
 from ..core.permissions import PermissionNames
-from ..models.permission import Permission
+from ..models.permission_map import PermissionMap   
 from ..models.user_role import UserRole
 from ..schemas.rate_limit import RateLimitRead, sanitize_path
 from ..schemas.tier import TierRead
@@ -91,9 +91,9 @@ async def has_permission(
 
     # 1) Direct user-level grant
     direct_q = await db.execute(
-        select(Permission.id).where(
-            Permission.user_id == user["id"],
-            Permission.permission_name == permission_name,
+        select(PermissionMap.id).where(
+            PermissionMap.user_id == user["id"],
+            PermissionMap.permission_name == permission_name,
         )
     )
     if direct_q.scalar_one_or_none():
@@ -101,11 +101,11 @@ async def has_permission(
 
     # 2) Role-level grant via UserRole association
     role_q = await db.execute(
-        select(Permission.id)
-        .join(UserRole, UserRole.role_id == Permission.role_id)
+        select(PermissionMap.id)
+        .join(UserRole, UserRole.role_id == PermissionMap.role_id)
         .where(
             UserRole.user_id == user["id"],
-            Permission.permission_name == permission_name,
+            PermissionMap.permission_name == permission_name,
         )
     )
     if role_q.scalar_one_or_none():

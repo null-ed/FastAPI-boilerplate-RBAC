@@ -21,5 +21,6 @@ class Role(Base):
     permission_maps: Mapped[list["PermissionMap"]] = relationship(
         "PermissionMap",
         lazy="selectin",
+        init=False,
     )
     

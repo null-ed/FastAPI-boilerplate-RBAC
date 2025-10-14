@@ -1,7 +1,15 @@
+from typing import TypeVar
 from fastcrud import FastCRUD
 
 
-class FastCRUDNoCommit(FastCRUD):
+ModelT = TypeVar("ModelT")
+CreateT = TypeVar("CreateT")
+UpdateT = TypeVar("UpdateT")
+UpdateInternalT = TypeVar("UpdateInternalT")
+DeleteT = TypeVar("DeleteT")
+ReadT = TypeVar("ReadT")
+
+class FastCRUDNoCommit(FastCRUD[ModelT, CreateT, UpdateT, UpdateInternalT, DeleteT, ReadT]):
     async def create(self, *args, **kwargs):
         kwargs.setdefault("commit", False)
         return await super().create(*args, **kwargs)

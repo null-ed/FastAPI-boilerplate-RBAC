@@ -9,7 +9,7 @@ from ...core.decorators.unit_of_work import transactional
 from ...core.permissions import PermissionNames
 from ...core.db.database import async_get_db
 from ...crud.crud_roles import crud_roles
-from ...crud.crud_permission_maps import assign_permission_to_role, remove_permission_from_role, list_role_permissions
+from ...crud.crud_permission_maps import assign_permission_to_role, remove_permission_from_role
 from ...schemas.role import (
     RoleCreate,
     RoleCreateInternal,

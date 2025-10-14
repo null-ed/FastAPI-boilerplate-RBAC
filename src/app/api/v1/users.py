@@ -14,7 +14,7 @@ from ...crud.crud_rate_limit import crud_rate_limits
 from ...crud.crud_tier import crud_tiers
 from ...crud.crud_users import crud_users
 from ...crud.crud_roles import crud_roles
-from ...crud.crud_user_roles import assign_role_to_user, remove_role_from_user, list_user_roles
+from ...crud.crud_user_roles import assign_role_to_user, remove_role_from_user
 from ...schemas.tier import TierRead
 from ...schemas.user import UserCreate, UserCreateInternal, UserRead, UserTierUpdate, UserUpdate
 
@@ -97,8 +97,7 @@ async def read_user(request: Request, username: str, db: Annotated[AsyncSession,
 
 
 
-@router.patch("/user/{user_id}", response_model=UserRead)
-@require_permission(PermissionNames.USER_UPDATE)
+@router.patch("/user/{user_id}", response_model=UserRead,dependencies=[Depends(require_permission(PermissionNames.USER_UPDATE))])
 @transactional()
 async def patch_user(
     user_id: int, values: UserUpdate, current_user: Annotated[dict, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(async_get_db)]
@@ -122,8 +121,7 @@ async def patch_user(
     return cast(UserRead, updated_user)
 
 
-@router.delete("/user/{user_id}")
-@require_permission(PermissionNames.USER_DELETE)
+@router.delete("/user/{user_id}",dependencies=[Depends(require_permission(PermissionNames.USER_DELETE))])
 @transactional()
 async def erase_user(
     user_id: int, current_user: Annotated[dict, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(async_get_db)]
@@ -208,8 +206,7 @@ async def read_user_tier(
     return user_dict
 
 
-@router.patch("/user/{user_id}/tier", response_model=UserRead)
-@require_permission(PermissionNames.USER_UPDATE)
+@router.patch("/user/{user_id}/tier", response_model=UserRead,dependencies=[Depends(require_permission(PermissionNames.USER_UPDATE))])
 @transactional()
 async def patch_user_tier(
     user_id: int, user_tier: UserTierUpdate, current_user: Annotated[dict, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(async_get_db)]
