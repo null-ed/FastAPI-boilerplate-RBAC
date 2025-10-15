@@ -17,11 +17,13 @@ from ...crud.crud_roles import crud_roles
 from ...crud.crud_user_roles import assign_role_to_user, remove_role_from_user
 from ...schemas.tier import TierRead
 from ...schemas.user import UserCreate, UserCreateInternal, UserRead, UserTierUpdate, UserUpdate
+from src.app.api import dependencies
 
 router = APIRouter(tags=["users"])
 
-
-@router.post("/user", response_model=UserRead, status_code=201)
+#当前路由仅允许超级用户或具有USER_CREATE权限的用户访问
+#不能用于用户注册，用户注册传入role_ids会为新账号分配权限
+@router.post("/user",dependencies=[Depends(has_permission(PermissionNames.USER_CREATE))], response_model=UserRead, status_code=201)
 @transactional()
 async def write_user(
     request: Request, user: UserCreate, db: Annotated[AsyncSession, Depends(async_get_db)], optional_user: Annotated[dict | None, Depends(get_optional_user)]
@@ -67,7 +69,8 @@ async def write_user(
     return cast(UserRead, user_read)
 
 
-@router.get("/users", response_model=PaginatedListResponse[UserRead])
+
+@router.get("/users",dependencies=[Depends(has_permission(PermissionNames.USER_READ))], response_model=PaginatedListResponse[UserRead])
 async def read_users(
     request: Request, db: Annotated[AsyncSession, Depends(async_get_db)], page: int = 1, items_per_page: int = 10
 ) -> dict:
@@ -87,7 +90,8 @@ async def read_users_me(request: Request, current_user: Annotated[dict, Depends(
     return current_user
 
 
-@router.get("/user/{username}", response_model=UserRead)
+
+@router.get("/user/{username}",dependencies=[Depends(has_permission(PermissionNames.USER_READ))], response_model=UserRead)
 async def read_user(request: Request, username: str, db: Annotated[AsyncSession, Depends(async_get_db)]) -> UserRead:
     db_user = await crud_users.get(db=db, username=username, is_deleted=False, schema_to_select=UserRead)
     if db_user is None:
