@@ -121,7 +121,9 @@ async def blacklist_tokens(access_token: str, refresh_token: str, db: AsyncSessi
     db: AsyncSession
         Database session for performing database operations.
     """
-    async with db.begin():
+    tx = db.begin_nested() if db.in_transaction() else db.begin()
+
+    async with tx:
         for token in [access_token, refresh_token]:
             payload = jwt.decode(token, SECRET_KEY.get_secret_value(), algorithms=[ALGORITHM])
             exp_timestamp = payload.get("exp")
@@ -131,7 +133,9 @@ async def blacklist_tokens(access_token: str, refresh_token: str, db: AsyncSessi
 
 
 async def blacklist_token(token: str, db: AsyncSession) -> None:
-    async with db.begin():
+    tx = db.begin_nested() if db.in_transaction() else db.begin()
+
+    async with tx:
         payload = jwt.decode(token, SECRET_KEY.get_secret_value(), algorithms=[ALGORITHM])
         exp_timestamp = payload.get("exp")
         if exp_timestamp is not None:
