@@ -122,95 +122,95 @@ async def erase_user(
     return {"message": "User deleted"}
 
 
-@router.delete("/db_user/{username}", dependencies=[Depends(get_current_superuser), Depends(require_permission(PermissionNames.USER_DELETE))])
-@transactional()
-async def erase_db_user(
-    request: Request,
-    username: str,
-    db: Annotated[AsyncSession, Depends(async_get_db)],
-    token: str = Depends(oauth2_scheme),
-) -> dict[str, str]:
-    db_user = await crud_users.exists(db=db, username=username)
-    if not db_user:
-        raise NotFoundException("User not found")
+# @router.delete("/db_user/{username}", dependencies=[Depends(get_current_superuser), Depends(require_permission(PermissionNames.USER_DELETE))])
+# @transactional()
+# async def erase_db_user(
+#     request: Request,
+#     username: str,
+#     db: Annotated[AsyncSession, Depends(async_get_db)],
+#     token: str = Depends(oauth2_scheme),
+# ) -> dict[str, str]:
+#     db_user = await crud_users.exists(db=db, username=username)
+#     if not db_user:
+#         raise NotFoundException("User not found")
 
-    # Delete user and blacklist token (transaction managed by decorator)
-    await crud_users.db_delete(db=db, username=username)
-    await blacklist_token(token=token, db=db)
-    return {"message": "User deleted from the database"}
-
-
-@router.get("/user/{username}/rate_limits", dependencies=[Depends(get_current_superuser)])
-async def read_user_rate_limits(
-    request: Request, username: str, db: Annotated[AsyncSession, Depends(async_get_db)]
-) -> dict[str, Any]:
-    db_user = await crud_users.get(db=db, username=username, schema_to_select=UserRead)
-    if db_user is None:
-        raise NotFoundException("User not found")
-
-    db_user = cast(UserRead, db_user)
-    user_dict = db_user.model_dump()
-    if db_user.tier_id is None:
-        user_dict["tier_rate_limits"] = []
-        return user_dict
-
-    db_tier = await crud_tiers.get(db=db, id=db_user.tier_id, schema_to_select=TierRead)
-    if db_tier is None:
-        raise NotFoundException("Tier not found")
-
-    db_tier = cast(TierRead, db_tier)
-    db_rate_limits = await crud_rate_limits.get_multi(db=db, tier_id=db_tier.id)
-
-    user_dict["tier_rate_limits"] = db_rate_limits["data"]
-
-    return user_dict
+#     # Delete user and blacklist token (transaction managed by decorator)
+#     await crud_users.db_delete(db=db, username=username)
+#     await blacklist_token(token=token, db=db)
+#     return {"message": "User deleted from the database"}
 
 
-@router.get("/user/{username}/tier")
-async def read_user_tier(
-    request: Request, username: str, db: Annotated[AsyncSession, Depends(async_get_db)]
-) -> dict | None:
-    db_user = await crud_users.get(db=db, username=username, schema_to_select=UserRead)
-    if db_user is None:
-        raise NotFoundException("User not found")
+# @router.get("/user/{username}/rate_limits", dependencies=[Depends(get_current_superuser)])
+# async def read_user_rate_limits(
+#     request: Request, username: str, db: Annotated[AsyncSession, Depends(async_get_db)]
+# ) -> dict[str, Any]:
+#     db_user = await crud_users.get(db=db, username=username, schema_to_select=UserRead)
+#     if db_user is None:
+#         raise NotFoundException("User not found")
 
-    db_user = cast(UserRead, db_user)
-    if db_user.tier_id is None:
-        return None
+#     db_user = cast(UserRead, db_user)
+#     user_dict = db_user.model_dump()
+#     if db_user.tier_id is None:
+#         user_dict["tier_rate_limits"] = []
+#         return user_dict
 
-    db_tier = await crud_tiers.get(db=db, id=db_user.tier_id, schema_to_select=TierRead)
-    if not db_tier:
-        raise NotFoundException("Tier not found")
+#     db_tier = await crud_tiers.get(db=db, id=db_user.tier_id, schema_to_select=TierRead)
+#     if db_tier is None:
+#         raise NotFoundException("Tier not found")
 
-    db_tier = cast(TierRead, db_tier)
+#     db_tier = cast(TierRead, db_tier)
+#     db_rate_limits = await crud_rate_limits.get_multi(db=db, tier_id=db_tier.id)
 
-    user_dict = db_user.model_dump()
-    tier_dict = db_tier.model_dump()
+#     user_dict["tier_rate_limits"] = db_rate_limits["data"]
 
-    for key, value in tier_dict.items():
-        user_dict[f"tier_{key}"] = value
-
-    return user_dict
+#     return user_dict
 
 
-@router.patch("/user/{user_id}/tier", response_model=UserRead,dependencies=[Depends(require_permission(PermissionNames.USER_UPDATE))])
-@transactional()
-async def patch_user_tier(
-    user_id: int, user_tier: UserTierUpdate, current_user: Annotated[dict, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(async_get_db)]
-) -> UserRead:
-    # Check if user exists
-    db_user = await crud_users.get(db=db, id=user_id)
-    if not db_user:
-        raise NotFoundException("User not found")
+# @router.get("/user/{username}/tier")
+# async def read_user_tier(
+#     request: Request, username: str, db: Annotated[AsyncSession, Depends(async_get_db)]
+# ) -> dict | None:
+#     db_user = await crud_users.get(db=db, username=username, schema_to_select=UserRead)
+#     if db_user is None:
+#         raise NotFoundException("User not found")
 
-    # Check if tier exists
-    tier = await crud_tiers.get(db=db, id=user_tier.tier_id)
-    if not tier:
-        raise NotFoundException("Tier not found")
+#     db_user = cast(UserRead, db_user)
+#     if db_user.tier_id is None:
+#         return None
 
-    # Update user tier (transaction managed by decorator)
-    updated_user = await crud_users.update(db=db, object=user_tier, id=user_id, commit=False)
-    return cast(UserRead, updated_user)
+#     db_tier = await crud_tiers.get(db=db, id=db_user.tier_id, schema_to_select=TierRead)
+#     if not db_tier:
+#         raise NotFoundException("Tier not found")
+
+#     db_tier = cast(TierRead, db_tier)
+
+#     user_dict = db_user.model_dump()
+#     tier_dict = db_tier.model_dump()
+
+#     for key, value in tier_dict.items():
+#         user_dict[f"tier_{key}"] = value
+
+#     return user_dict
+
+
+# @router.patch("/user/{user_id}/tier", response_model=UserRead,dependencies=[Depends(require_permission(PermissionNames.USER_UPDATE))])
+# @transactional()
+# async def patch_user_tier(
+#     user_id: int, user_tier: UserTierUpdate, current_user: Annotated[dict, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(async_get_db)]
+# ) -> UserRead:
+#     # Check if user exists
+#     db_user = await crud_users.get(db=db, id=user_id)
+#     if not db_user:
+#         raise NotFoundException("User not found")
+
+#     # Check if tier exists
+#     tier = await crud_tiers.get(db=db, id=user_tier.tier_id)
+#     if not tier:
+#         raise NotFoundException("Tier not found")
+
+#     # Update user tier (transaction managed by decorator)
+#     updated_user = await crud_users.update(db=db, object=user_tier, id=user_id, commit=False)
+#     return cast(UserRead, updated_user)
 
 
 @router.put("/user/{user_id}/roles", dependencies=[Depends(require_permission(PermissionNames.USER_UPDATE))])
