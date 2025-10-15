@@ -52,6 +52,5 @@ class RoleDelete(BaseModel):
 class RolePermissionsRead(RoleRead):
     permissions: List[str] = []
 
-
-class PermissionAssign(BaseModel):
-    permission_name: Annotated[str, Field(min_length=2, max_length=100, examples=["user:read"])]
+class RolePermissionsAssign(BaseModel):
+    permission_names: Annotated[list[str] | None, Field(default=None)]

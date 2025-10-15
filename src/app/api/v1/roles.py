@@ -1,33 +1,31 @@
-from typing import Annotated, Any, cast, List
+from typing import Annotated, cast, List
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
-from ...api.dependencies import get_current_superuser, require_permission
+from ...api.dependencies import require_permission
 from ...core.decorators.unit_of_work import transactional
 from ...core.permissions import PermissionNames
 from ...core.db.database import async_get_db
 from ...crud.crud_roles import crud_roles
-from ...crud.crud_permission_maps import assign_permission_to_role, remove_permission_from_role
+from ...models.permission_map import PermissionMap
 from ...schemas.role import (
     RoleCreate,
     RoleCreateInternal,
     RoleRead,
     RoleUpdate,
     RoleUpdateInternal,
-    RolePermissionsRead,
-    PermissionAssign,
 )
 
 router = APIRouter(prefix="/role", tags=["roles"])
 
 
-@router.post("/", dependencies=[Depends(require_permission(PermissionNames.ROLE_CREATE))], response_model=RolePermissionsRead, status_code=201)
+@router.post("/", dependencies=[Depends(require_permission(PermissionNames.ROLE_CREATE))], response_model=RoleRead, status_code=201)
 @transactional()
 async def create_role(
     request: Request, role_in: RoleCreate, db: Annotated[AsyncSession, Depends(async_get_db)]
-) -> RolePermissionsRead:
+) -> RoleRead:
     # Check duplicate name
     existing = await crud_roles.exists(db=db, name=role_in.name)
     if existing:
@@ -40,13 +38,8 @@ async def create_role(
         raise HTTPException(status_code=404, detail="Created role not found")
     role_read = cast(RoleRead, role_read)
 
-    # Assign permissions if provided (within the same transaction)
-    if role_in.permission_names:
-        for perm in role_in.permission_names:
-            await assign_permission_to_role(db, role_id=role_read.id, permission_name=perm)
-
-    perms = created.permission_names
-    return RolePermissionsRead(**role_read.model_dump(), permissions=perms)
+    # Simplified: do not handle permissions here
+    return role_read
 
 
 @router.get("/", dependencies=[Depends(require_permission(PermissionNames.ROLE_READ))], response_model=List[RoleRead])
@@ -55,21 +48,19 @@ async def list_roles(request: Request, db: Annotated[AsyncSession, Depends(async
     return cast(List[RoleRead], data["data"])
 
 
-@router.get("/{role_id}", dependencies=[Depends(require_permission(PermissionNames.ROLE_READ))], response_model=RolePermissionsRead)
-async def read_role(request: Request, role_id: int, db: Annotated[AsyncSession, Depends(async_get_db)]) -> RolePermissionsRead:
+@router.get("/{role_id}", dependencies=[Depends(require_permission(PermissionNames.ROLE_READ))], response_model=RoleRead)
+async def read_role(request: Request, role_id: int, db: Annotated[AsyncSession, Depends(async_get_db)]) -> RoleRead:
     role = await crud_roles.get(db=db, id=role_id, schema_to_select=RoleRead)
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
-    role = cast(RoleRead, role)
-    perms = role.permission_names
-    return RolePermissionsRead(**role.model_dump(), permissions=perms)
+    return cast(RoleRead, role)
 
 
-@router.put("/{role_id}", dependencies=[Depends(require_permission(PermissionNames.ROLE_UPDATE))], response_model=RolePermissionsRead)
+@router.put("/{role_id}", dependencies=[Depends(require_permission(PermissionNames.ROLE_UPDATE))], response_model=RoleRead)
 @transactional()
 async def update_role(
     request: Request, role_id: int, role_in: RoleUpdate, db: Annotated[AsyncSession, Depends(async_get_db)]
-) -> RolePermissionsRead:
+) -> RoleRead:
     role = await crud_roles.get(db=db, id=role_id, schema_to_select=RoleRead)
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
@@ -83,22 +74,10 @@ async def update_role(
     # Update role (transaction managed by decorator)
     await crud_roles.update(db=db, object=RoleUpdateInternal(**role_in.model_dump(exclude_unset=True), updated_at=None), id=role_id, commit=False)
 
-    # Update permissions if provided (within the same transaction)
-    if role_in.permission_names is not None:
-        # Remove all existing permissions for role
-        current_perms = role.permission_maps
-        for p in current_perms:
-            await remove_permission_from_role(db, role_id=role_id, permission_name=p)
-        # Add new ones
-        for p in role_in.permission_names:
-            await assign_permission_to_role(db, role_id=role_id, permission_name=p)
-
     updated = await crud_roles.get(db=db, id=role_id, schema_to_select=RoleRead)
     if updated is None:
         raise HTTPException(status_code=404, detail="Role not found after update")
-    updated = cast(RoleRead, updated)
-    perms = await list_role_permissions(db, role_id=updated.id)
-    return RolePermissionsRead(**updated.model_dump(), permissions=perms)
+    return cast(RoleRead, updated)
 
 
 @router.delete("/{role_id}", dependencies=[Depends(require_permission(PermissionNames.ROLE_DELETE))])
@@ -110,15 +89,14 @@ async def delete_role(request: Request, role_id: int, db: Annotated[AsyncSession
 
     # Delete role's permissions and user-role links (transaction managed by decorator)
     from ...models.user_role import UserRole
-    from ...models.permission import Permission
 
     # Remove UserRole links
     links = await db.execute(select(UserRole).where(UserRole.role_id == role_id))
     for link in links.scalars().all():
         await db.delete(link)
 
-    # Remove permissions
-    perms_q = await db.execute(select(Permission).where(Permission.role_id == role_id))
+    # Remove permissions (PermissionMap rows for this role)
+    perms_q = await db.execute(select(PermissionMap).where(PermissionMap.role_id == role_id))
     for perm in perms_q.scalars().all():
         await db.delete(perm)
 
@@ -127,4 +105,4 @@ async def delete_role(request: Request, role_id: int, db: Annotated[AsyncSession
     return {"message": "Role deleted"}
 
 
-# Permission assignment endpoints removed
+# Roles router simplified: permission assignment handled in permissions router

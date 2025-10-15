@@ -1,24 +1,21 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select
 from ..models.permission_map import PermissionMap
 
 
+async def assign_permissions_to_role(db: AsyncSession, role_id: int, permission_names: list[str] | None) -> None:
+    """Replace all permissions for a role with the provided list.
 
-async def assign_permission_to_role(db: AsyncSession, role_id: int, permission_name: str) -> None:
-    existing = await db.execute(
-        select(PermissionMap).where(PermissionMap.role_id == role_id, PermissionMap.permission_name == permission_name)
-    )
-    if existing.scalar_one_or_none():
-        return
-    db.add(PermissionMap(permission_name=permission_name, role_id=role_id))
+    - Removes existing PermissionMap rows for the role
+    - Adds new PermissionMap rows for each permission in the deduplicated list
+    - Treats None or empty list as removing all permissions
+    """
+    # Remove existing permissions
+    existing_q = await db.execute(select(PermissionMap).where(PermissionMap.role_id == role_id))
+    for row in existing_q.scalars().all():
+        await db.delete(row)
 
-
-async def remove_permission_from_role(db: AsyncSession, role_id: int, permission_name: str) -> bool:
-    q = await db.execute(
-        select(PermissionMap).where(PermissionMap.role_id == role_id, PermissionMap.permission_name == permission_name)
-    )
-    perm = q.scalar_one_or_none()
-    if not perm:
-        return False
-    await db.delete(perm)
-    return True
+    # Add new permissions (deduplicated)
+    unique_permissions = list(set(permission_names or []))
+    for perm_name in unique_permissions:
+        db.add(PermissionMap(permission_name=perm_name, role_id=role_id))
