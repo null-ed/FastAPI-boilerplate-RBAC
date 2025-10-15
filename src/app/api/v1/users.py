@@ -4,28 +4,26 @@ from fastapi import APIRouter, Depends, Request
 from fastcrud.paginated import PaginatedListResponse, compute_offset, paginated_response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from ...api.dependencies import get_current_superuser, get_current_user, require_permission, get_optional_user, has_permission
+from ...api.dependencies import get_current_superuser, get_current_user, require_permission
 from ...core.decorators.unit_of_work import transactional
 from ...core.permissions import PermissionNames
 from ...core.db.database import async_get_db
-from ...core.exceptions.http_exceptions import DuplicateValueException, ForbiddenException, NotFoundException
+from ...core.exceptions.http_exceptions import DuplicateValueException, NotFoundException
 from ...core.security import blacklist_token, get_password_hash, oauth2_scheme
 from ...crud.crud_rate_limit import crud_rate_limits
 from ...crud.crud_tier import crud_tiers
 from ...crud.crud_users import crud_users
-from ...crud.crud_roles import crud_roles
-from ...crud.crud_user_roles import assign_role_to_user, remove_role_from_user
 from ...schemas.tier import TierRead
 from ...schemas.user import UserCreate, UserCreateInternal, UserRead, UserTierUpdate, UserUpdate
 
 router = APIRouter(tags=["users"])
 
-#当前路由仅允许超级用户或具有USER_CREATE权限的用户访问
-#不能用于用户注册，用户注册传入role_ids会为新账号分配权限
+# 当前路由仅允许具有 USER_CREATE 权限的用户访问
+# 仅处理用户模型相关字段（角色分配请使用专门接口）
 @router.post("/user",dependencies=[Depends(require_permission(PermissionNames.USER_CREATE))], response_model=UserRead, status_code=201)
 @transactional()
 async def write_user(
-    request: Request, user: UserCreate, db: Annotated[AsyncSession, Depends(async_get_db)], optional_user: Annotated[dict | None, Depends(get_optional_user)]
+    request: Request, user: UserCreate, db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> UserRead:
     email_row = await crud_users.exists(db=db, email=user.email)
     if email_row:
@@ -43,22 +41,6 @@ async def write_user(
     
     # Create user (transaction managed by decorator)
     created_user = await crud_users.create(db=db, object=user_internal, commit=False)
-
-    # Assign roles at creation if role_ids provided; authorization linked to USER_CREATE
-    if getattr(user, "role_ids", None):
-        authorized = False
-        if optional_user is not None:
-            # Allow if superuser or has USER_CREATE
-            authorized = optional_user.get("is_superuser") or await has_permission(optional_user, PermissionNames.USER_CREATE, db)
-        if authorized:
-            # Validate all role IDs exist before any assignment
-            for rid in user.role_ids:
-                role = await crud_roles.get(db=db, id=rid)
-                if role is None:
-                    raise NotFoundException(f"Role not found: {rid}")
-            # Assign all roles (within the same transaction)
-            for rid in user.role_ids:
-                await assign_role_to_user(db, created_user.id, rid)
 
     # Fetch the created user with all data (outside transaction for read-only operation)
     user_read = await crud_users.get(db=db, id=created_user.id, schema_to_select=UserRead)
