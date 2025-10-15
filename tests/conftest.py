@@ -45,7 +45,16 @@ def override_dependency(dependency: Callable[..., Any], mocked_response: Any) ->
 @pytest.fixture
 def mock_db():
     """Mock database session for unit tests."""
-    return Mock(spec=AsyncSession)
+    session = AsyncMock(spec=AsyncSession)
+    # Simulate not being already in a transaction
+    session.in_transaction = Mock(return_value=False)
+    # Provide async context manager behavior for begin()
+    session.begin.return_value.__aenter__ = AsyncMock()
+    session.begin.return_value.__aexit__ = AsyncMock()
+    # Provide async context manager behavior for begin_nested() just in case
+    session.begin_nested.return_value.__aenter__ = AsyncMock()
+    session.begin_nested.return_value.__aexit__ = AsyncMock()
+    return session
 
 
 @pytest.fixture
@@ -82,7 +91,7 @@ def sample_user_read():
         name=fake.name(),
         username=fake.user_name(),
         email=fake.email(),
-        profile_image_url=fake.image_url(),
+        phone_number=fake.msisdn(),
         is_superuser=False,
         created_at=fake.date_time(),
         updated_at=fake.date_time(),
