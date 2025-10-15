@@ -116,36 +116,37 @@ class TestPatchUser:
     @pytest.mark.asyncio
     async def test_patch_user_success(self, mock_db, current_user_dict, sample_user_read):
         """Test successful user update."""
-        username = current_user_dict["username"]
+        from uuid6 import uuid7
+
+        user_id = uuid7()
         user_update = UserUpdate(name="New Name")
-        
-        
+
         user_dict = sample_user_read.model_dump()
-        user_dict["username"] = username
 
         with patch("src.app.api.v1.users.crud_users") as mock_crud:
-            mock_crud.get = AsyncMock(return_value=user_dict)  
-            mock_crud.exists = AsyncMock(return_value=False)  
-            mock_crud.update = AsyncMock(return_value=None)
+            mock_crud.get = AsyncMock(return_value=user_dict)
+            mock_crud.exists = AsyncMock(return_value=False)
+            mock_crud.update = AsyncMock(return_value=user_dict)
 
-            result = await patch_user(Mock(), user_update, username, current_user_dict, mock_db)
+            result = await patch_user(user_id, user_update, current_user_dict, mock_db)
 
-            assert result == {"message": "User updated"}
+            assert result == user_dict
             mock_crud.update.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_patch_user_forbidden(self, mock_db, current_user_dict, sample_user_read):
         """Test user update when user tries to update another user."""
-        username = "different_user"
+        from uuid6 import uuid7
+
+        user_id = uuid7()
         user_update = UserUpdate(name="New Name")
         user_dict = sample_user_read.model_dump()
-        user_dict["username"] = username
 
         with patch("src.app.api.v1.users.crud_users") as mock_crud:
-            mock_crud.get = AsyncMock(return_value=user_dict)  
+            mock_crud.get = AsyncMock(return_value=user_dict)
 
             with pytest.raises(ForbiddenException):
-                await patch_user(Mock(), user_update, username, current_user_dict, mock_db)
+                await patch_user(user_id, user_update, current_user_dict, mock_db)
 
 
 class TestEraseUser:
@@ -154,8 +155,9 @@ class TestEraseUser:
     @pytest.mark.asyncio
     async def test_erase_user_success(self, mock_db, current_user_dict, sample_user_read):
         """Test successful user deletion."""
-        username = current_user_dict["username"]
-        sample_user_read.username = username
+        from uuid6 import uuid7
+
+        user_id = uuid7()
         token = "mock_token"
 
         with patch("src.app.api.v1.users.crud_users") as mock_crud:
@@ -163,33 +165,33 @@ class TestEraseUser:
             mock_crud.delete = AsyncMock(return_value=None)
 
             with patch("src.app.api.v1.users.blacklist_token", new_callable=AsyncMock) as mock_blacklist:
-                result = await erase_user(Mock(), username, current_user_dict, mock_db, token)
+                result = await erase_user(user_id, current_user_dict, mock_db)
 
                 assert result == {"message": "User deleted"}
-                mock_crud.delete.assert_called_once_with(db=mock_db, username=username)
-                mock_blacklist.assert_called_once_with(token=token, db=mock_db)
+                mock_crud.delete.assert_called_once_with(db=mock_db, id=user_id)
 
     @pytest.mark.asyncio
     async def test_erase_user_not_found(self, mock_db, current_user_dict):
         """Test user deletion when user doesn't exist."""
-        username = "nonexistent_user"
-        token = "mock_token"
+        from uuid6 import uuid7
+
+        user_id = uuid7()
 
         with patch("src.app.api.v1.users.crud_users") as mock_crud:
             mock_crud.get = AsyncMock(return_value=None)
 
             with pytest.raises(NotFoundException, match="User not found"):
-                await erase_user(Mock(), username, current_user_dict, mock_db, token)
+                await erase_user(user_id, current_user_dict, mock_db)
 
     @pytest.mark.asyncio
     async def test_erase_user_forbidden(self, mock_db, current_user_dict, sample_user_read):
         """Test user deletion when user tries to delete another user."""
-        username = "different_user"
-        sample_user_read.username = username
-        token = "mock_token"
+        from uuid6 import uuid7
+
+        user_id = uuid7()
 
         with patch("src.app.api.v1.users.crud_users") as mock_crud:
             mock_crud.get = AsyncMock(return_value=sample_user_read)
 
             with pytest.raises(ForbiddenException):
-                await erase_user(Mock(), username, current_user_dict, mock_db, token)
+                await erase_user(user_id, current_user_dict, mock_db)

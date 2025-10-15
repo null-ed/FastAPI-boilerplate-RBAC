@@ -1,4 +1,5 @@
 from typing import Annotated, Any, cast
+import uuid as uuid_pkg
 from fastapi import APIRouter, Depends, Request
 from fastcrud.paginated import PaginatedListResponse, compute_offset, paginated_response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -88,7 +89,7 @@ async def read_posts(
 @router.get("/{username}/post/{id}", response_model=PostRead)
 @cache(key_prefix="{username}_post_cache", resource_id_name="id")
 async def read_post(
-    request: Request, username: str, id: int, db: Annotated[AsyncSession, Depends(async_get_db)]
+    request: Request, username: str, id: uuid_pkg.UUID, db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> PostRead:
     db_user = await crud_users.get(
         db=db, 
@@ -116,7 +117,7 @@ async def read_post(
 async def patch_post(
     request: Request,
     username: str,
-    id: int,
+    id: uuid_pkg.UUID,
     values: PostUpdate,
     current_user: Annotated[dict, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(async_get_db)],
@@ -150,7 +151,7 @@ async def patch_post(
 async def erase_post(
     request: Request,
     username: str,
-    id: int,
+    id: uuid_pkg.UUID,
     current_user: Annotated[dict, Depends(get_current_user)],
     db: Annotated[AsyncSession, Depends(async_get_db)],
 ) -> dict[str, str]:
@@ -182,7 +183,7 @@ async def erase_post(
 @cache("{username}_post_cache", resource_id_name="id", to_invalidate_extra={"{username}_posts": "{username}"})
 @transactional()
 async def erase_db_post(
-    request: Request, username: str, id: int, db: Annotated[AsyncSession, Depends(async_get_db)]
+    request: Request, username: str, id: uuid_pkg.UUID, db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> dict[str, str]:
     db_user = await crud_users.get(
         db=db, 

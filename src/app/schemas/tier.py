@@ -1,4 +1,5 @@
 from datetime import datetime
+import uuid as uuid_pkg
 from typing import Annotated
 
 from pydantic import BaseModel, Field
@@ -15,7 +16,7 @@ class Tier(TimestampSchema, TierBase):
 
 
 class TierRead(TierBase):
-    id: int
+    id: uuid_pkg.UUID
     created_at: datetime
 
 

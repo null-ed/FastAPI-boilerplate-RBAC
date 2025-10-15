@@ -1,15 +1,16 @@
 from datetime import UTC, datetime
+import uuid as uuid_pkg
 
-from sqlalchemy import DateTime, String
+from sqlalchemy import DateTime, String, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from ..core.db.database import Base
+from ..core.db.models import IDMixin
 
 
-class Tier(Base):
+class Tier(Base, IDMixin):
     __tablename__ = "tier"
 
-    id: Mapped[int] = mapped_column("id", autoincrement=True, nullable=False, unique=True, primary_key=True, init=False)
     name: Mapped[str] = mapped_column(String, nullable=False, unique=True)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default_factory=lambda: datetime.now(UTC))

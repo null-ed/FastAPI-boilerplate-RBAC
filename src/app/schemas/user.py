@@ -1,9 +1,10 @@
 from datetime import datetime
+import uuid as uuid_pkg
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
-from ..core.schemas import PersistentDeletion, TimestampSchema, UUIDSchema
+from ..core.schemas import PersistentDeletion, TimestampSchema, IDSchema
 
 
 class UserBase(BaseModel):
@@ -20,14 +21,14 @@ class UserBase(BaseModel):
     ]
 
 
-class User(TimestampSchema, UserBase, UUIDSchema, PersistentDeletion):
+class User(TimestampSchema, UserBase, IDSchema, PersistentDeletion):
     hashed_password: str
     is_superuser: bool = False
-    tier_id: int | None = None
+    tier_id: uuid_pkg.UUID | None = None
 
 
 class UserRead(BaseModel):
-    id: int
+    id: uuid_pkg.UUID
 
     name: Annotated[str, Field(min_length=2, max_length=30, examples=["User Userson"])]
     username: Annotated[str, Field(min_length=2, max_length=20, pattern=r"^[a-z0-9]+$", examples=["userson"])]
@@ -39,7 +40,7 @@ class UserRead(BaseModel):
             default=None,
         ),
     ]
-    tier_id: int | None
+    tier_id: uuid_pkg.UUID | None
 
 
 class UserCreate(UserBase):
@@ -75,7 +76,7 @@ class UserUpdateInternal(UserUpdate):
 
 
 class UserTierUpdate(BaseModel):
-    tier_id: int
+    tier_id: uuid_pkg.UUID
 
 
 class UserDelete(BaseModel):
@@ -91,4 +92,4 @@ class UserRestoreDeleted(BaseModel):
 
 # Schema for assigning roles: replace user's roles with provided list
 class UserRolesAssign(BaseModel):
-    role_ids: Annotated[list[int] | None, Field(default=None)]
+    role_ids: Annotated[list[uuid_pkg.UUID] | None, Field(default=None)]

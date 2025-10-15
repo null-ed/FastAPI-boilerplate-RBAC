@@ -13,8 +13,8 @@ class HealthCheck(BaseModel):
 
 
 # -------------- mixins --------------
-class UUIDSchema(BaseModel):
-    uuid: uuid_pkg.UUID = Field(default_factory=uuid7)
+class IDSchema(BaseModel):
+    id: uuid_pkg.UUID = Field(default_factory=uuid7)
 
 
 class TimestampSchema(BaseModel):
@@ -64,7 +64,7 @@ class TokenBlacklistBase(BaseModel):
 
 
 class TokenBlacklistRead(TokenBlacklistBase):
-    id: int
+    id: uuid_pkg.UUID
 
 
 class TokenBlacklistCreate(TokenBlacklistBase):

@@ -1,4 +1,5 @@
 from datetime import datetime
+import uuid as uuid_pkg
 from typing import Annotated, List
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,7 +17,7 @@ class Role(TimestampSchema, RoleBase):
 
 
 class RoleRead(RoleBase):
-    id: int
+    id: uuid_pkg.UUID
     is_active: bool
     created_at: datetime
 

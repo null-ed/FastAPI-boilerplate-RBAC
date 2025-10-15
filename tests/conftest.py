@@ -1,4 +1,6 @@
 from collections.abc import Callable, Generator
+import os
+import pathlib
 from typing import Any
 from unittest.mock import AsyncMock, Mock
 
@@ -9,6 +11,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.session import Session
+
+# Force-disable admin during tests to avoid side effects on import
+os.environ["CRUD_ADMIN_ENABLED"] = "False"
+# Ensure Alembic uses the config in src
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+os.environ.setdefault("ALEMBIC_CONFIG", str(REPO_ROOT / "src" / "alembic.ini"))
 
 from src.app.core.config import settings
 from src.app.main import app
@@ -86,15 +94,11 @@ def sample_user_read():
     from src.app.schemas.user import UserRead
 
     return UserRead(
-        id=1,
-        uuid=uuid7(),
+        id=uuid7(),
         name=fake.name(),
         username=fake.user_name(),
         email=fake.email(),
         phone_number=fake.msisdn(),
-        is_superuser=False,
-        created_at=fake.date_time(),
-        updated_at=fake.date_time(),
         tier_id=None,
     )
 

@@ -1,4 +1,5 @@
 from typing import Annotated, Any, cast
+import uuid as uuid_pkg
 
 from fastapi import APIRouter, Depends, Request
 from fastcrud.paginated import PaginatedListResponse, compute_offset, paginated_response
@@ -87,7 +88,7 @@ async def read_user(request: Request, username: str, db: Annotated[AsyncSession,
 @router.patch("/user/{user_id}", response_model=UserRead,dependencies=[Depends(require_permission(PermissionNames.USER_UPDATE))])
 @transactional()
 async def patch_user(
-    user_id: int, values: UserUpdate, current_user: Annotated[dict, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(async_get_db)]
+    user_id: uuid_pkg.UUID, values: UserUpdate, current_user: Annotated[dict, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> UserRead:
     user_current = await crud_users.get(db=db, id=user_id)
     if not user_current:
@@ -111,7 +112,7 @@ async def patch_user(
 @router.delete("/user/{user_id}",dependencies=[Depends(require_permission(PermissionNames.USER_DELETE))])
 @transactional()
 async def erase_user(
-    user_id: int, current_user: Annotated[dict, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(async_get_db)]
+    user_id: uuid_pkg.UUID, current_user: Annotated[dict, Depends(get_current_user)], db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> dict[str, str]:
     db_user = await crud_users.get(db=db, id=user_id)
     if not db_user:
@@ -216,7 +217,7 @@ async def erase_user(
 @router.put("/user/{user_id}/roles", dependencies=[Depends(require_permission(PermissionNames.USER_UPDATE))])
 @transactional()
 async def grant_user_roles(
-    user_id: int,
+    user_id: uuid_pkg.UUID,
     roles_in: UserRolesAssign,
     db: Annotated[AsyncSession, Depends(async_get_db)],
 ) -> dict[str, Any]:

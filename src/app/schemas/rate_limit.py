@@ -1,4 +1,5 @@
 from datetime import datetime
+import uuid as uuid_pkg
 from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -21,13 +22,13 @@ class RateLimitBase(BaseModel):
 
 
 class RateLimit(TimestampSchema, RateLimitBase):
-    tier_id: int
+    tier_id: uuid_pkg.UUID
     name: Annotated[str | None, Field(default=None, examples=["users:5:60"])]
 
 
 class RateLimitRead(RateLimitBase):
-    id: int
-    tier_id: int
+    id: uuid_pkg.UUID
+    tier_id: uuid_pkg.UUID
     name: str
 
 
@@ -38,7 +39,7 @@ class RateLimitCreate(RateLimitBase):
 
 
 class RateLimitCreateInternal(RateLimitCreate):
-    tier_id: int
+    tier_id: uuid_pkg.UUID
 
 
 class RateLimitUpdate(BaseModel):

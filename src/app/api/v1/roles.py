@@ -1,4 +1,5 @@
 from typing import Annotated, cast, List, Any
+import uuid as uuid_pkg
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,7 +53,7 @@ async def list_roles(request: Request, db: Annotated[AsyncSession, Depends(async
 
 
 @router.get("/{role_id}", dependencies=[Depends(require_permission(PermissionNames.ROLE_READ))], response_model=RoleRead)
-async def read_role(request: Request, role_id: int, db: Annotated[AsyncSession, Depends(async_get_db)]) -> RoleRead:
+async def read_role(request: Request, role_id: uuid_pkg.UUID, db: Annotated[AsyncSession, Depends(async_get_db)]) -> RoleRead:
     role = await crud_roles.get(db=db, id=role_id, schema_to_select=RoleRead)
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
@@ -62,7 +63,7 @@ async def read_role(request: Request, role_id: int, db: Annotated[AsyncSession, 
 @router.put("/{role_id}/permissions", dependencies=[Depends(require_permission(PermissionNames.ROLE_UPDATE))])
 @transactional()
 async def grant_role_permissions(
-    role_id: int,
+    role_id: uuid_pkg.UUID,
     perms_in: RolePermissionsAssign,
     db: Annotated[AsyncSession, Depends(async_get_db)],
 ) -> dict[str, Any]:
@@ -93,7 +94,7 @@ async def grant_role_permissions(
 @router.put("/{role_id}", dependencies=[Depends(require_permission(PermissionNames.ROLE_UPDATE))], response_model=RoleRead)
 @transactional()
 async def update_role(
-    request: Request, role_id: int, role_in: RoleUpdate, db: Annotated[AsyncSession, Depends(async_get_db)]
+    request: Request, role_id: uuid_pkg.UUID, role_in: RoleUpdate, db: Annotated[AsyncSession, Depends(async_get_db)]
 ) -> RoleRead:
     role = await crud_roles.get(db=db, id=role_id, schema_to_select=RoleRead)
     if role is None:
@@ -116,7 +117,7 @@ async def update_role(
 
 @router.delete("/{role_id}", dependencies=[Depends(require_permission(PermissionNames.ROLE_DELETE))])
 @transactional()
-async def delete_role(request: Request, role_id: int, db: Annotated[AsyncSession, Depends(async_get_db)]) -> dict[str, str]:
+async def delete_role(request: Request, role_id: uuid_pkg.UUID, db: Annotated[AsyncSession, Depends(async_get_db)]) -> dict[str, str]:
     role = await crud_roles.get(db=db, id=role_id, schema_to_select=RoleRead)
     if role is None:
         raise HTTPException(status_code=404, detail="Role not found")
