@@ -13,8 +13,10 @@ from ...core.security import blacklist_token, get_password_hash, oauth2_scheme
 from ...crud.crud_rate_limit import crud_rate_limits
 from ...crud.crud_tier import crud_tiers
 from ...crud.crud_users import crud_users
+from ...crud.crud_roles import crud_roles
+from ...crud.crud_user_roles import assign_role_to_user
 from ...schemas.tier import TierRead
-from ...schemas.user import UserCreate, UserCreateInternal, UserRead, UserTierUpdate, UserUpdate
+from ...schemas.user import UserCreate, UserCreateInternal, UserRead, UserTierUpdate, UserUpdate, UserRolesAssign
 
 router = APIRouter(tags=["users"])
 
@@ -209,3 +211,36 @@ async def patch_user_tier(
     # Update user tier (transaction managed by decorator)
     updated_user = await crud_users.update(db=db, object=user_tier, id=user_id, commit=False)
     return cast(UserRead, updated_user)
+
+
+@router.put("/user/{user_id}/roles", dependencies=[Depends(require_permission(PermissionNames.USER_UPDATE))])
+@transactional()
+async def grant_user_roles(
+    user_id: int,
+    roles_in: UserRolesAssign,
+    db: Annotated[AsyncSession, Depends(async_get_db)],
+) -> dict[str, Any]:
+    """Replace a user's roles with the provided list.
+
+    - Verifies the user exists
+    - Validates each role id exists
+    - Replaces all user roles in a single transaction
+    """
+    # Ensure user exists
+    db_user = await crud_users.get(db=db, id=user_id)
+    if not db_user:
+        raise NotFoundException("User not found")
+
+    # Normalize incoming role ids
+    role_ids = roles_in.role_ids or []
+
+    # Validate roles
+    for rid in role_ids:
+        role = await crud_roles.get(db=db, id=rid)
+        if role is None:
+            raise NotFoundException(f"Role not found: {rid}")
+
+    # Replace user roles
+    await assign_role_to_user(db, user_id, role_ids)
+
+    return {"user_id": user_id, "role_ids": role_ids}
