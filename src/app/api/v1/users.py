@@ -44,11 +44,12 @@ async def write_user(
     
     # Create user (transaction managed by decorator)
     created_user = await crud_users.create(db=db, object=user_internal, commit=False)
-
     # Fetch the created user with all data (outside transaction for read-only operation)
-    user_read = await crud_users.get(db=db, id=created_user.id, schema_to_select=UserRead)
-    if user_read is None:
-        raise NotFoundException("Created user not found")
+    # user_read = await crud_users.get(db=db, id=created_user.id, schema_to_select=UserRead)
+    # if user_read is None:
+    #     raise NotFoundException("Created user not found")
+    # 直接在事务内将 created_user 转换为 UserRead 返回
+    return cast(UserRead, created_user)
 
     return cast(UserRead, user_read)
 

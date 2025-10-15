@@ -38,6 +38,7 @@ async def create_role(
     # Create role (transaction managed by decorator)
     created = await crud_roles.create(db=db, object=RoleCreateInternal(**role_in.model_dump()), commit=False)
     role_read = await crud_roles.get(db=db, id=created.id, schema_to_select=RoleRead)
+    
     if role_read is None:
         raise HTTPException(status_code=404, detail="Created role not found")
     role_read = cast(RoleRead, role_read)
