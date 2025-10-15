@@ -86,7 +86,7 @@ async def update_role(
     # Update permissions if provided (within the same transaction)
     if role_in.permission_names is not None:
         # Remove all existing permissions for role
-        current_perms = await list_role_permissions(db, role_id=role_id)
+        current_perms = role.permission_maps
         for p in current_perms:
             await remove_permission_from_role(db, role_id=role_id, permission_name=p)
         # Add new ones
