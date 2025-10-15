@@ -15,13 +15,13 @@ class IDMixin:
 
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.now(UTC), server_default=text("current_timestamp(0)"), init=False
+        DateTime(timezone=True), default=datetime.now(UTC), server_default=text("current_timestamp(0)"), init=False
     )
     updated_at: Mapped[datetime | None] = mapped_column(
-        DateTime, nullable=True, default=None, onupdate=datetime.now(UTC), server_default=text("current_timestamp(0)"), init=False
+        DateTime(timezone=True), nullable=True, default=None, onupdate=datetime.now(UTC), server_default=text("current_timestamp(0)"), init=False
     )
 
 
 class SoftDeleteMixin:
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, default=None, init=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None, init=False)
     is_deleted: Mapped[bool] = mapped_column(Boolean, default=False, init=False)
